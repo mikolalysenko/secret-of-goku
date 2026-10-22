@@ -131,8 +131,9 @@ the kick's cells after the hold), a native target's slot to draw white)
 and writes the native timed shake (`$E00D` = hold << 4 | axis). One FX_HIT
 spawn per contact carries it all. After the contacts it calls `fx_kick`
 (facing | blow << 8);
-the kick also `fx_quake` (3 / 5) and `fx_flash` (3). A ki shot's impact
-carries the smallest starburst. `cb_fx_prep` (from `cb_fx_continuous`'s
+the kick also `fx_quake` (3 / 5), and no flash since 2026-10-22 (below).
+A ki shot's impact carries the smallest starburst. `cb_fx_prep` (from
+`cb_fx_continuous`'s
 action dispatch for punches, while the age is below 2, not in a frame an
 NMI already interrupted or whose logic ran past line 170: a cold record
 costs fx up to 13 lines) asks `fx_warm` for
@@ -160,11 +161,11 @@ unchanged.
 | Hit stop, jab / cross / kick | 4 / 8 / 14 (Super Saiyan 3 / 7 / 12): the jab stays snappy | 5 / 6 / 10 (4 / 5 / 9) |
 | A blow that kills a native actor | Goku holds at least 12 (10) frames; the target, its spark and its shake keep the blow's own stop, so it flies while he holds the pose (`!cb_kill`, `!cb_stop`) | the blow's stop |
 | Camera kick (fx `fx_kick_steps`, signed) | a shake along the blow: jab 2, -1; cross 4, -3, 2, -1; kick 8, -6, 4, -3, 2, -1; a kill 11, -8, 6, -4, 2, -1 | 2 / 3 / 4 px springing back |
-| Full-screen flash (white, fx `fx_flash` curves 1-2) | the finishing kick 12, 6, 2; a kill 18, 9, 4 (of 31) | the kick's warm 4, 2, 1 |
+| Full-screen flash | none on a blow (round two's white flash on the finishing kick and a kill is gone: below) | the kick's warm 4, 2, 1 |
 | BG quake | the kick 4 (6), a kill 3 (5) | the kick 3 (5) |
 | Launch over 12 frames | 96 px (136), peak 30 px; the Kamehameha blows targets 148 (196); the transformation's burst 96 (136) | 56 / 88, peak 20; beams as launches |
 | A launched actor landing alive on screen (`FEEL.land`) | a thud: the camera jolts down with the jab's kick (2, -1) unless a kick runs (`cb_bind_land_kick`, from `cb_update_launches` at the arc's end; a push-back never). A killed actor's death effect is gone before its arc ends, so a kill's landing has none | nothing |
-| The Kamehameha's release | a white flash (14, 9, 5, 2; the full Super Saiyan wave 24, 18, 12, 8, 4, 2) and the kill's camera shake along the beam, on top of the quake | the quake |
+| The Kamehameha's release | the kill's camera shake along the beam, on top of the quake; no flash | the quake |
 | A ki shot's contact | the cross's starburst | the smallest |
 | A punch pressed after the combo buffer opens (age 9, 4) | starts at once | the next frame |
 | A move's first frame (a punch from rest or the next blow, a ki throw from rest, the Kamehameha's release) | in the vblank of the press when there is room for its cell (First frames, below); otherwise a frame later, as the game draws | the frame of the press |
@@ -196,6 +197,36 @@ stays), a shockwave for a ki shot that kills (ki 23), a starburst on every
 Kamehameha contact pulse (charge +5 to +7; the pulse sparks stay), a
 one-frame base startup for the punch (punch +1 to +3 over six offsets) and
 for the ki throw (ki +5): the startups stay the browser's.
+
+**No full-screen flash (2026-10-22).** The maintainer: "actually get rid
+of the full screen flash, it's too much". Round two's white flashes are
+gone: the finishing kick's (12, 6, 2 of 31), a kill's (18, 9, 4), the
+Kamehameha's release (14, 9, 5, 2) and the full wave's (24, 18, 12, 8, 4,
+2), with fx's curves 1-4 and the white bit of `fx_nmi_math`. `FEEL.flash`
+and the `COMBAT_FLASH_*` defines went with them. The hit stop, a kill's
+hold, the camera shake along the blow, the BG quake, the launches and the
+ki shot's starburst stay, as does the transformation's warm flash (the
+browser's; none where the game runs its own colour math, below). The
+browser keeps its warm 4, 2, 1 on the kick; the cartridge has none.
+Gameplay CPU misses over offsets 0-9 are unchanged (punch 6, ki 3, fly 1,
+fly-ki 12, fly-punch 3, teleport 22, charge 43: 90 in all, as on
+cd0585d), and so are the perf scenes.
+
+**The flash and the game's colour math (2026-10-22).** The maintainer
+reported palette glitches when a full Super Saiyan wave at max charge cut
+the grass on the way to Potos. The Potos approach (map 128) and the Rabite
+field (129) blend BG2, the water, with the subscreen through the game's own
+colour math (CGADSUB shadow `$23` = `$42`; south Potos, map 16, blends BG1:
+`$41`). The flash is fixed-colour addition, which replaced that blend for
+its frames: the water turned bright cyan, then deep teal, and snapped
+back. The release's white flash did it on every wave and beam there, a
+kill's and the finishing kick's in the fields, and the transformation's
+warm flash already did on every build before. fx now drops a flash while
+`$23` has a layer bit (`fx_finish`); the transformation still flashes
+where the game runs no colour math (Potos itself, `$23` = 0). The browser
+brightens before the game's blend, which one colour math unit cannot do.
+The cut cells were never wrong: after the wave the map, the BG1 / BG2
+tilemaps and the BG palettes equal the browser's (`wave-potos`, below).
 
 **On main's performance pass (cd59395, 2026-10-22).** The round merged
 onto the performance pass (direct Goku sprite writes, the unrolled contact
@@ -603,11 +634,24 @@ traces are compared by `compare.mjs`:
 Scenarios: `punch`, `combo`, `combo-held`, `ssj-punch`, `ki`, `ki-held`,
 `ki-ssj`, `beam`, `beam-partial`, `wave`, `transform`, `mantis`, `boss-hit`,
 `boss-hit-ssj`, `chip-hit`, `chip-hit-ssj`, `deflect`, `deflect-ssj`,
-`heavy-gi`, `heavy-gi-ssj`, `revert` (Rabite field, Mantis Ant arena, party
-state). `transform` places Goku where the browser's walk ends (x 324) on
-both sides: a lagging field frame walks 2 px less, and on the integration
-build the Rabite field lags enough that the Rabite stayed outside the
-burst. Traces: `.local/snes-test/combat/<scenario>/`.
+`heavy-gi`, `heavy-gi-ssj`, `revert`, `wave-potos` (Rabite field, Mantis
+Ant arena, party state, the Potos approach). `transform` places Goku where
+the browser's walk ends (x 324) on both sides: a lagging field frame walks
+2 px less, and on the integration build the Rabite field lags enough that
+the Rabite stayed outside the burst. Traces:
+`.local/snes-test/combat/<scenario>/`.
+
+**Colour math** (`gameMath`: `punch`, `combo`, `beam`, `wave`, `transform`,
+`wave-potos`): every write to CGWSEL, CGADSUB and COLDATA while the game's
+`$23` has a layer bit must keep the game's blend (CGADSUB `$23`, CGWSEL 2
+or a beam window's `$22`, COLDATA black; `lib.lua` `C.watchMath`). Round
+two's build fails five of them (the flash's `$33` addition). `wave-potos`
+(the maintainer's repro: the full wave at max charge across the Potos
+approach's bushes and grass) also attaches the browser's cut pipeline
+(`engine/native-plants.js`, as the lab does) and compares the picture after
+the wave (`screenCompare` in `run.mjs`): the two map layers (17 cut cells
+on both), the BG1 / BG2 tilemaps (4096 words, 64 of them redrawn) and the
+BG palettes (CGRAM 0-127 less the water's animated entries).
 
 **Virtual targets** (`frieza-punch`, `frieza-ki`, `frieza-ki-held`,
 `frieza-beam`, `frieza-wave`, `frieza-burst`): the battle reference

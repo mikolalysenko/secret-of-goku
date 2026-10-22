@@ -26,11 +26,11 @@ export const FEEL={
   // signed steps along the blow, a shake that dies out (browser: 2/3/4 px
   // springing back, native-feedback.js KICK_PROFILES). Six steps at most.
   kick:[[2,-1],[4,-3,2,-1],[8,-6,4,-3,2,-1],[11,-8,6,-4,2,-1]],
-  // A full-screen white flash (fixed-colour addition, of 31) frame by frame
-  // on the finishing kick, a killing blow and the Kamehameha's release
-  // (the full Super Saiyan wave's longest; browser: the kick's warm 4, 2, 1
-  // brightening, none for the beam).
-  flash:{kick:[12,6,2],kill:[18,9,4],beam:[14,9,5,2],wave:[24,18,12,8,4,2]},
+  // No full-screen flash on a blow or the Kamehameha's release (the
+  // maintainer, 2026-10-22: "actually get rid of the full screen flash,
+  // it's too much"). Round two flashed the screen white on the finishing
+  // kick, a killing blow and the release; the browser brightens the kick
+  // warmly (4, 2, 1). The transformation keeps the browser's warm flash.
   // BG quake frames of the finishing kick and of a killing blow (base,
   // Super Saiyan; browser: the kick's 3 / 5).
   quake:{kick:[4,6],kill:[3,5]},

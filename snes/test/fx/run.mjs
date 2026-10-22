@@ -6,6 +6,8 @@
 //   gallery  every OBJ kind at fixed screen points, several ages (Potos)
 //   beams    charge orb at Goku's palm, Kamehameha in four directions,
 //            ki shots, impacts, transformation ring + flash + quake
+//   flash    the warm flash's colour math: shown in Potos, none where the
+//            game blends layers itself (the Potos approach)
 //   battle   effects over the Frieza arena (preset__battle)
 //   budget   frame-logic end line and NMI end with heavy effects
 //   node snes/test/fx/run.mjs [test ...]
@@ -208,7 +210,7 @@ for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-
 // shipped renderer): its exact-restoration count also includes FX's own edge
 // sprites, whose OBJ palette now follows the crowded-palette fix, so it runs
 // only when named.
-const tests=['gallery','beams','aura','aura-lag','deathball','palette-latch','debris','cinematic','clash','battle','budget','clash-colour'].filter(t=>existsSync(join(here,`${t}.lua`))&&(only.length?only.includes(t):t!=='clash-colour'));
+const tests=['gallery','beams','aura','aura-lag','deathball','palette-latch','flash','debris','cinematic','clash','battle','budget','clash-colour'].filter(t=>existsSync(join(here,`${t}.lua`))&&(only.length?only.includes(t):t!=='clash-colour'));
 let ok=true;
 for(const t of tests){
   const rom=privateRom(testRom,`fx-${t}`);

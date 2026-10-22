@@ -2,16 +2,20 @@
 // from .local/snes-import/catalog.json), an input script (button[+button]:frames
 // per step) and optional set-up. Both the cartridge and the browser engine run
 // the same script from the same state; run.mjs compares the traces.
+// gameMath: the cartridge's colour math writes are checked against the
+// game's own blend ($23; lib.lua C.watchMath) on these fields, where the
+// game blends BG2 with the subscreen. plants / screen: run.mjs
+// screenCompare.
 import {FEEL} from '../../gen/snes-feel.mjs';   // the SNES-only launch (radial: the Super Saiyan burst's distance)
 const RABITES='animation-audit__native__rabite-field-a';   // Goku (288,602), Rabites 3-5
 const BATTLE='snes-ref__battle__state';                     // preset battle (map 246): Goku (280,426), Frieza's fight
 export const SCENARIOS=[
   // One jab kills the Rabite to the right: 999 queued, 1 HP left for the
   // native lethal hit, death effect F9 flies 56 px, 1 XP each, 2 GP.
-  {name:'punch',bundle:RABITES,script:'right:12,b:3,none:40'},
+  {name:'punch',bundle:RABITES,gameMath:true,script:'right:12,b:3,none:40'},
   // Tapping chains jab -> cross -> kick (buffered after frame 9), misses
   // pulse native B; an idle gap resets the chain.
-  {name:'combo',bundle:RABITES,script:'left:3,b:1,none:5,b:1,none:5,b:1,none:5,b:1,none:40,b:1,none:20'},
+  {name:'combo',bundle:RABITES,gameMath:true,script:'left:3,b:1,none:5,b:1,none:5,b:1,none:5,b:1,none:40,b:1,none:20'},
   // Holding B chains the combo too.
   {name:'combo-held',bundle:RABITES,script:'left:3,b:60,none:20'},
   // Super Saiyan: 7-frame punches, strike after 1 frame, 88 px launch.
@@ -21,16 +25,24 @@ export const SCENARIOS=[
   {name:'ki-held',bundle:RABITES,script:'right:4,y:40,none:30'},
   {name:'ki-ssj',bundle:RABITES,ssj:true,script:'right:4,y:30,none:30'},
   // Kamehameha: full base charge (90 frames), release toward the Rabites.
-  {name:'beam',bundle:RABITES,script:'right:4,l+y:95,none:50'},
+  {name:'beam',bundle:RABITES,gameMath:true,script:'right:4,l+y:95,none:50'},
   {name:'beam-partial',bundle:RABITES,script:'right:4,l+y:30,none:40'},
   // Full Super Saiyan wave (45 frames): 64-frame beam, 6-frame pulses.
-  {name:'wave',bundle:RABITES,ssj:true,script:'right:4,l+y:50,none:80'},
+  {name:'wave',bundle:RABITES,ssj:true,gameMath:true,script:'right:4,l+y:50,none:80'},
+  // The maintainer's report (2026-10-22): the full wave at max charge on the
+  // Potos approach (map 128: bushes and grass, the water blended by the
+  // game's colour math) showed palette glitches in the cut grass. Round
+  // two's white release flash replaced the game's blend. The colour math
+  // stays the game's, and after the wave the cut map cells, the BG1 / BG2
+  // tilemaps and the BG palettes equal the browser's (its cut pipeline
+  // attached).
+  {name:'wave-potos',bundle:'emulator-probe__main-before-grass',ssj:true,gameMath:true,plants:true,screen:true,script:'right:2,l+y:60,none:150'},
   // Focus builds 96 frames; L+A at full power transforms (first reveal: 72
   // frames, the burst on age 26 hits everything within 56 px). The walk
   // ends where the browser's does (x 324) on both sides: a lagging field
   // frame walks 2 px less, and a Rabite 4 px farther stays out of the
   // burst's reach (and ignores Goku).
-  {name:'transform',bundle:RABITES,radial:FEEL.launch[1],script:'right:20,l:100,l+a:4,l:2,none:90',pokes:[[22,0x7EE002,324,2]]},
+  {name:'transform',bundle:RABITES,radial:FEEL.launch[1],gameMath:true,script:'right:20,l:100,l+a:4,l:2,none:90',pokes:[[22,0x7EE002,324,2]]},
   // Mantis Ant (boss species $57): one jab leaves 1 HP, the native lethal hit
   // starts its own death and the cave's defeat/rescue event; bosses never fly.
   {name:'mantis',bundle:'emulator-probe__map-260-state',script:'up:2,b:2,none:420',
