@@ -461,16 +461,15 @@ never from copied data. Test-ROM cases build `dist/snes/story-test.sfc` with
 | Browser differential | `diff-*` (9) | the browser's own `native-story.js` runs on the vendored SnesJs core (`snes/test/story/jsref.mjs`) from the same source state with the same request and mashing: all 256 story flags, the relocated events entered, the ledger and absent-actor skips equal the cartridge's, for the Moogle (solo, full party), Water seed, Luka's Advice, the solo 28A, a story-area door, a villager, the Elder (114) and the Potos arrival scene (10C, 2,400 frames) |
 | Every route | `sweep-0`…`sweep-7` | the cartridge evaluates all 324 dispatch programs (`story_test_sweep`) under 8 states (all party masks, ledger, RAM thresholds, every foreign query, 6 seeded at random); all 2,592 choices equal the browser's |
 
-Not covered natively: complete cutscenes that upload music or sound banks.
-After `H.importSnesJs` the driver's upload handshake (`C3:065C`, waiting for
-the SPC700 to echo `$2140`) never completes, so a test stops at the first
-song change; the scripts up to that point were verified. Owners' behaviour
-behind the hooks (Frieza, Sandship wreck, endings) is outside this module.
+Song changes no longer stop an imported state: `H.importSnesJs` now swaps
+the SPC700 state at an instruction boundary, and the `earth-gnome-*` and
+`tropicallo-*` cases run through boss music and back (`C3:065C` used to wait
+forever for the SPC700 to echo `$2140`). Owners' behaviour behind the hooks
+(Frieza, Sandship wreck, endings) is outside this module.
 
 ## Not ported here / core and owner requests
 
-- **Core / tools:** the import bundles' APU state does not answer sound-bank
-  uploads (above). The Water Palace walk script (at most 512 bytes) is built
+- **Core / tools:** the Water Palace walk script (at most 512 bytes) is built
   in `!SRAM_WORK_STORY` and executed by the original interpreter and text
   engine, which the WRAM/SRAM claim test (`snes/test/core/wram.lua`) would
   report as original code reading an added SRAM page; either whitelist
