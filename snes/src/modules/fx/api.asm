@@ -629,6 +629,28 @@ fx_quake:
 ; fx_kill_all: every spawned effect, the flash, the quake and the camera
 ; kick end.
 fx_kill_all:
+if defined("FX_KILL_ALL_ALWAYS") == 0
+	; While the orbit owns the picture (its flags' bit 0: orbit.md), combat's
+	; cancel calls this every frame. With nothing held, requested, spawned,
+	; drawn, flashing, quaking or kicking there is nothing to end, and no
+	; request either: fx_frame stays on its idle path.
+	LDA.l !RAM_ORBIT+$02
+	LSR
+	BCC .kill
+	LDA.l !fx_magic
+	CMP.w #!FX_MAGIC
+	BNE .kill
+	LDA.l !fx_busy
+	ORA.l !fx_nlive
+	ORA.l !fx_hiwater
+	ORA.l !fx_ndraw
+	ORA.l !fx_flash
+	ORA.l !fx_quake
+	ORA.l !fx_kickd
+	BNE .kill
+	RTL
+.kill
+endif
 	JSR fx_ensure_init
 	JSR fx_clear_slots
 	LDA.w #$0000
