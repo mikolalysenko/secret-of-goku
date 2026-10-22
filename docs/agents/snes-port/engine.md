@@ -317,10 +317,14 @@ flying ki.
 The field NMI's native actor graphics uploader also uses bank `$81`,
 including Goku's skip/refresh continuations. Ground tilemap uploads use a
 byte-identical copy of `C0:C692-C7C2` in the core bank, avoiding an RTS bank
-bridge; the following HUD upload uses `$80`. Airborne tilemap/HUD uploads
-retain the original bank timing because the unrestricted trial worsened
-the sustained flying-ki scenario. `CORE_NATIVE_NMI_SLOW` restores all three
-original upload paths. The assembled comparison checks ordered hardware
+bridge; the following HUD upload uses `$80`. Airborne frames now take the
+same path: the original bank timing they kept had been chosen from one long
+flying-ki run's chaotic count; summed over start phases the faster vblank
+gives 114 -> 113 misses (fly-ki 12 -> 11), the native NMI 21.22 -> 20.51
+lines per fly-ki frame (fly-punch 20.53 -> 19.81), and the longest field
+NMI 37.24 -> 36.52 lines with no overrun left (fly-punch offset 4 had one)
+(`CORE_NATIVE_UPLOADS_AIR_SLOW=1` keeps the bank-`$00` airborne path).
+`CORE_NATIVE_NMI_SLOW` restores all three original upload paths. The assembled comparison checks ordered hardware
 writes, RAM, registers and flags across all five phases, actor sizes,
 Goku replacement/refresh states, scrolling layers and both flight states.
 No transfer is omitted or deferred by this change.

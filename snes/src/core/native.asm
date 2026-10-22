@@ -885,15 +885,20 @@ core_native_hp_request:
 ; keep a byte-identical local copy to avoid its RTS bank bridge. The HUD
 ; routine uses bank $80's identical mapping and returns through B294's RTL.
 core_native_field_uploads:
+if defined("CORE_NATIVE_UPLOADS_AIR_SLOW")
 	; Keep the measured airborne schedule while its CPU peaks remain open.
 	; A is dead here: C692 writes its low byte and C238 replaces both bytes
 	; before either can use it. BIT immediate preserves carry and overflow.
 	LDA.l !RAM_FLIGHT
 	BIT.w #1
 	BNE .air
+endif
+	; (airborne too: the bank-$00 timing kept for flight is judged by the
+	; start-phase sums now, not by one long run's chaotic count)
 	JSR core_native_tilemap_uploads
 	PEA $B294-1
 	JML $80C238
+if defined("CORE_NATIVE_UPLOADS_AIR_SLOW")
 .air
 	PHK
 	PER .air_hud-1
@@ -902,6 +907,7 @@ core_native_field_uploads:
 .air_hud
 	PEA $B294-1
 	JML $00C238
+endif
 
 ; C0:C692-C7C2 has only internal relative branches, absolute I/O and DP
 ; WRAM accesses. Copy the verified cartridge bytes, including the RTS;
