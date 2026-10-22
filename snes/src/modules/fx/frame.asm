@@ -1012,25 +1012,13 @@ fx_finish:
 	AND.w #$003F
 	BNE .gameMath
 	LDA.l !fx_flash
-	XBA                          ; (curve * 8 + frames) * 2
-	AND.w #$0007
-	ASL
-	ASL
-	ASL
-	STA !d_tmp
-	LDA.l !fx_flash
-	AND.w #$00FF
-	ORA !d_tmp
 	ASL
 	TAX
-	LDA.l fx_flash_amounts,X     ; amount | white << 8
+	LDA.l fx_flash_amounts,X
 	STA.l !fx_flashamt
 	LDA.l !fx_flash
 	DEC
-	BIT.w #$00FF
-	BNE +
-	LDA.w #$0000                 ; its last frame: the curve goes too
-+	STA.l !fx_flash
+	STA.l !fx_flash
 	BRA .quake
 .gameMath
 	LDA.w #$0000
@@ -1062,8 +1050,9 @@ fx_finish:
 	; nmipal continues to describe the displayed OAM during a lag vblank.
 	; The vblank's FX work: uploads and polygons take the full path; a
 	; flash (or its end) and a camera kick alone take the light one
-	; ($8000, | $4000 for the colour math: fx_nmi .light), which a kill's
-	; three flash frames would otherwise spend in the full path's set-up.
+	; ($8000, | $4000 for the colour math: fx_nmi .light), which the
+	; transformation's flash frames would otherwise spend in the full
+	; path's set-up.
 	LDA.l !fx_cpend              ; palettes already went through the early hook
 	ORA.l !fx_flashamt
 	ORA.l !fx_mathon

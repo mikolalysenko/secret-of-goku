@@ -607,12 +607,10 @@ found by a search of the 15 cache entries when their hint misses.
   steps per blow, jab, cross, kick and a killing blow (A's blow 3), from
   `snes/gen/snes-feel.mjs`: a shake that dies out (8, -6, 4, -3, 2, -1 for
   the kick; six steps at most, so `!fx_kick`'s index stays in its five
-  bits). `fx_flash` takes frames | curve << 8 (`!fx_flash` keeps the curve
-  in its high byte): curve 0 is the transformation's warm ramp, 1 and 2 the
-  finishing kick's and a kill's white impact flash (12, 6, 2 and 18, 9, 4
-  of 31), 3 and 4 the Kamehameha's release and the full Super Saiyan
-  wave's (14, 9, 5, 2 and 24, 18, 12, 8, 4, 2; `fx_flash_amounts` bit 8
-  makes `fx_nmi_math` add blue too). A
+  bits). Round two's white impact and release flashes (`fx_flash` curves
+  1-4: the finishing kick, a kill, the Kamehameha and the full wave) were
+  dropped at the maintainer's request (2026-10-22): `fx_flash` takes frames
+  again and `fx_flash_amounts` holds the warm ramp alone. A
   vblank whose only FX work is the colour math and / or a camera kick takes
   the light path (`!fx_nmiwork` = `$C000`, set after `!fx_busy` so its bit
   15 never reads as fx_frame's held-regions mark): the scroll and the four

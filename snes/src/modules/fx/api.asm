@@ -562,33 +562,19 @@ fx_draw_full:
 	SEC
 	RTL
 
-; fx_flash: A = frames (1-7) | curve << 8 (fx_flash_amounts: 0 the
-; transformation's warm ramp, 7 frames; 1 the finishing kick's, 2 a killing
-; blow's, 3 the Kamehameha's and 4 the full wave's white flash,
-; snes-feel.mjs). A flash with more frames left keeps going. !fx_flash
-; holds frames | curve << 8. None while the game runs its own colour math
-; ($23: fx_finish drops it).
+; fx_flash: A = frames (1-7; the transformation uses 7): the warm ramp of
+; native-feedback.js's burst (fx_flash_amounts). A flash already running
+; longer keeps going. None while the game runs its own colour math ($23:
+; fx_finish drops it).
 fx_flash:
 	JSR fx_ensure_init
-	PHA
-	AND.w #$00FF
 	CMP.w #8
 	BCC +
 	LDA.w #7
-+	STA.l !fx_s+12                ; frames
-	LDA.l !fx_flash
-	AND.w #$00FF
-	CMP.l !fx_s+12
-	BEQ +
-	BCS .keep
-+	PLA
-	AND.w #$0700
-	ORA.l !fx_s+12
++	CMP.l !fx_flash
+	BCC +
 	STA.l !fx_flash
-	RTL
-.keep
-	PLA
-	RTL
++	RTL
 
 ; fx_quake: A = frames. The native BG quake byte $49 gets $E0 for that many
 ; frames unless an event already uses it; a native write takes it back.
