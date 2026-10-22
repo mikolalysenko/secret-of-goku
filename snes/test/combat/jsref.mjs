@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Browser-mod reference for combat: engine/mana-mod.js with the native
+// Browser-mod reference for combat: engine/mana-mod.js (with the
+// cartridge's SNES-only combat feel applied: snes/test/snes-feel.mjs) with the native
 // adapters it relies on (combat sound, interaction, hit recovery, feedback,
 // equipment, Senzu) installed on the vendored SnesJs core, from a private
 // browser-mod state, with scripted input. Every frame is probed exactly as
@@ -12,6 +13,7 @@ import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import vm from 'node:vm';
 import {loadCore} from '../../tools/snesjs-export.mjs';
+import {snesFeel} from '../snes-feel.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const {restore,hash}=await import(resolve(repo,'engine/state.js'));
 const adapters={
@@ -91,7 +93,7 @@ export function runJsRef({state,steps,superSaiyan=false,gi=null,pokes=[],pokeBas
   const s=loadCore(new Uint8Array(readFileSync(romPath)));
   restore(s,{...JSON.parse(readFileSync(state,'utf8')),romHash:hash(s.cart.data)});
   const context={window:{ManaSpriteLayer:class{load(){}destroy(){}}},Image:class{decode(){return Promise.resolve();}},Promise,Math,JSON,Array,Object,Number,Set,Map,Error};
-  for(const f of['goku-animation-data.js','goku-animation.js','mana-mod.js'])vm.runInNewContext(readFileSync(resolve(repo,'engine',f),'utf8'),context);
+  for(const f of['goku-animation-data.js','goku-animation.js','mana-mod.js'])vm.runInNewContext(snesFeel(f,readFileSync(resolve(repo,'engine',f),'utf8')),context);
   const logs=[];
   const mod=new context.window.ManaMod(s,{onLog:t=>logs.push(t)});
   Object.assign(mod.options,{enabled:true,power:true,superSaiyan});

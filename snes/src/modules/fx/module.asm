@@ -270,6 +270,7 @@ incsrc "frame.asm"
 incsrc "emit.asm"
 incsrc "kinds.asm"
 incsrc "impact.asm"
+incsrc "fx/shock.asm"                ; generated: the shockwave's one-pass placements
 incsrc "poly.asm"
 incsrc "red.asm"
 incsrc "clash.asm"

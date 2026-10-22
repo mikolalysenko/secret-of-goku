@@ -7,6 +7,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import vm from 'node:vm';
 import {patchItemIcons} from './combat-icons.mjs';
+import {FEEL} from './snes-feel.mjs';
 
 const hex=(v,n=2)=>'$'+(v>>>0).toString(16).toUpperCase().padStart(n,'0');
 const s8=v=>{if(v<-128||v>127)throw Error(`combat gen: ${v} does not fit a signed byte`);return v&255;};
@@ -137,40 +138,57 @@ export async function generate({rom,repo,outDir}){
     for(let age=0;age<64;age++)list.push(Math.floor(80*Math.min(1,(age+1)/6,(64-age)/10)*256));
     lines.push('combat_mega_half88: ; floor(256 * halfWidth) of the full SSJ wave by age',...chunk(list,16).map(l=>`\tdw ${dw(l)}`));
   }
-  // --- launch arcs: offsets for 56/88 px, both directions; height. The
-  // axis tables (and the push-backs' below) form one block of 13-word rows,
-  // positive then negative per kind: a launch record keeps its kind's offset
-  // (!kb_tab = kind * 52, COMBAT_TAB_*).
-  lines.push('combat_launch_axis: ; per kind (56, 88, push-back base, Super Saiyan): +offsets, -offsets by age');
-  for(const d of [56,88]){
+  // --- launch arcs (SNES-only distances, snes-feel.mjs): one block of
+  // 13-word rows, positive then negative per kind (52 bytes): the launch
+  // (base, Super Saiyan), the push-back of a jab or cross that does not kill
+  // (base, Super Saiyan) and the Kamehameha's blow-away (base, Super Saiyan).
+  // A launch record keeps its kind's rows (!kb_tab = kind * 26, doubled when
+  // read) and its length (12, or the push-back's); combat_launch_kinds gives
+  // both per kind and form, after the distance (cb_launch_start).
+  const {SLIDE,SLIDE_FRAMES}=manaModStatics(repo);
+  if(SLIDE_FRAMES>12)throw Error('combat gen: a push-back outlasts the launch rows');
+  const slideEase=a=>{const t=Math.min(1,a/SLIDE_FRAMES);return 1-(1-t)**2;};
+  const kinds=[
+    ['launch_base',FEEL.launch[0],launchEase,12],['launch_ssj',FEEL.launch[1],launchEase,12],
+    ['slide_base',SLIDE[0],slideEase,SLIDE_FRAMES],['slide_ssj',SLIDE[1],slideEase,SLIDE_FRAMES],
+    ['beam_base',FEEL.beamLaunch[0],launchEase,12],['beam_ssj',FEEL.beamLaunch[1],launchEase,12],
+  ];
+  if(kinds.some(k=>k[1]<1||k[1]>255))throw Error('combat gen: a launch distance does not fit a byte');
+  lines.push('combat_launch_axis: ; per kind (launch, push-back, blow-away; base, Super Saiyan): +offsets, -offsets by age');
+  for(const [name,d,ease] of kinds){
     const pos=[0],neg=[0];
-    for(let a=1;a<=12;a++){pos.push(Math.round(d*launchEase(a)));neg.push(Math.round(-d*launchEase(a)));}
-    lines.push(`combat_launch_${d}p:`,`\tdw ${dw(pos)}`,`combat_launch_${d}n:`,`\tdw ${dw(neg)}`);
+    for(let a=1;a<=12;a++){pos.push(Math.round(d*ease(a)));neg.push(Math.round(-d*ease(a)));}
+    lines.push(`combat_${name}p:`,`\tdw ${dw(pos)}`,`combat_${name}n:`,`\tdw ${dw(neg)}`);
   }
+  lines.push('combat_launch_kinds: ; per kind and form: rows (kind * 26), distance, frames');
+  kinds.forEach(([name,d,,len],i)=>lines.push(`\tdb ${db([i*26,d,len])} ; ${name}`));
+  defs.push('!COMBAT_KIND_LAUNCH = 0','!COMBAT_KIND_SLIDE = 2','!COMBAT_KIND_BEAM = 4');
+  defs.push(`!COMBAT_LAUNCH_BASE = ${FEEL.launch[0]}`,`!COMBAT_LAUNCH_SSJ = ${FEEL.launch[1]}`);
   {
     const lift=[0],ease=[0];
-    for(let a=1;a<=12;a++){const t=Math.min(1,a/12);lift.push(Math.round(Math.sin(t*Math.PI)*20));ease.push(Math.min(65535,Math.round(launchEase(a)*65536)));}
+    for(let a=1;a<=12;a++){const t=Math.min(1,a/12);lift.push(Math.round(Math.sin(t*Math.PI)*FEEL.lift));ease.push(Math.min(65535,Math.round(launchEase(a)*65536)));}
     lines.push('combat_launch_lift:',`\tdb ${db(lift)}`,'combat_launch_ease16: ; ease in 0.16 (radial launches)',`\tdw ${dw(ease)}`);
   }
-  // --- connected punches: graded hit stop and the push-back of a jab or
-  // cross that does not kill (strike() / hit() / updateKnockbacks())
+  // --- connected punches (SNES-only feel, snes-feel.mjs): the graded hit
+  // stop and a kill's longer one.
   {
-    const {HIT_STOP,SLIDE,SLIDE_FRAMES}=manaModStatics(repo);
-    if(HIT_STOP.flat().some(v=>v<1||v>14))throw Error('combat gen: hit stop out of range');
-    lines.push('combat_hit_stop: ; jab, cross, kick; base form, then Super Saiyan',`\tdb ${db(HIT_STOP.flat())}`);
-    const ease=a=>{const t=Math.min(1,a/SLIDE_FRAMES);return 1-(1-t)**2;};
-    if(SLIDE_FRAMES>12)throw Error('combat gen: a push-back outlasts the launch rows');
-    const slides=[];
-    for(const d of SLIDE){
-      if(d===56||d===88||d>127)throw Error('combat gen: push-back distance clashes with a launch');
-      const pos=[0],neg=[0];
-      for(let a=1;a<=12;a++){pos.push(Math.round(d*ease(a)));neg.push(Math.round(-d*ease(a)));}
-      slides.push(`combat_slide_${d===SLIDE[0]?'base':'ssj'}p:`,`\tdw ${dw(pos)}`,`combat_slide_${d===SLIDE[0]?'base':'ssj'}n:`,`\tdw ${dw(neg)}`);
-    }
-    // (right after the launch rows: one block, see combat_launch_axis)
-    lines.splice(lines.indexOf('combat_launch_lift:'),0,...slides);
+    const {hitStop,killStop}=FEEL;
+    if(hitStop.flat().concat(killStop).some(v=>v<1||v>15))throw Error('combat gen: hit stop out of range');
+    lines.push('combat_hit_stop: ; jab, cross, kick; base form, then Super Saiyan',`\tdb ${db(hitStop.flat())}`);
+    defs.push(`!COMBAT_KILL_STOP_BASE = ${killStop[0]}`,`!COMBAT_KILL_STOP_SSJ = ${killStop[1]}`);
+    defs.push(`!COMBAT_KICK_QUAKE_BASE = ${FEEL.quake.kick[0]}`,`!COMBAT_KICK_QUAKE_SSJ = ${FEEL.quake.kick[1]}`);
+    defs.push(`!COMBAT_KILL_QUAKE_BASE = ${FEEL.quake.kill[0]}`,`!COMBAT_KILL_QUAKE_SSJ = ${FEEL.quake.kill[1]}`);
+    // fx_flash arguments (frames | curve << 8): curves 1 and 2 of fx.mjs's
+    // fx_flash_amounts, the kick's and a kill's white impact flash
+    defs.push(`!COMBAT_FLASH_KICK = $${(FEEL.flash.kick.length|0x100).toString(16)}`,`!COMBAT_FLASH_KILL = $${(FEEL.flash.kill.length|0x200).toString(16)}`);
+    defs.push(`!COMBAT_FLASH_BEAM = $${(FEEL.flash.beam.length|0x300).toString(16)}`,`!COMBAT_FLASH_WAVE = $${(FEEL.flash.wave.length|0x400).toString(16)}`);
+    // a launched actor's landing: the camera kick's blow (+1; 0 none)
+    if(FEEL.land<-1||FEEL.land>3)throw Error('combat gen: landing kick out of range');
+    defs.push(`!COMBAT_LAND_KICK = ${FEEL.land+1}`);
+    // a ki shot's contact: its impact frame (er_aux: starburst size + 1)
+    if(FEEL.kiStar<0||FEEL.kiStar>3)throw Error('combat gen: starburst size out of range');
+    defs.push(`!COMBAT_STAR_KI = ${FEEL.kiStar+1}`);
     defs.push(`!COMBAT_SLIDE_BASE = ${SLIDE[0]}`,`!COMBAT_SLIDE_SSJ = ${SLIDE[1]}`,`!COMBAT_SLIDE_FRAMES = ${SLIDE_FRAMES}`);
-    defs.push('!COMBAT_TAB_56 = 0','!COMBAT_TAB_88 = 52','!COMBAT_TAB_SLIDE = 104','!COMBAT_TAB_SLIDE_SSJ = 156');
   }
   // --- hand sockets (mana-mod.js handOrigin): dx = sx-16, dy = sy-31 per
   // form, technique (0 beam, 1 ki hand 0, 2 ki hand 1, 3 charge) and facing.
