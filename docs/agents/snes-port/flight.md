@@ -92,7 +92,13 @@ single-cell landing takes 609 CPU cycles cold or warm, versus 1,109/653.
   `fl_is_passenger_live` tests the adjacent pairs `$EC`/`$ED` and the flight
   lock as words (`FLIGHT_PASSENGER_LIVE_SLOW=1`: byte by byte): with two
   companions carried the actor and contact stages (B0CA, B0B2) take 0.23
-  lines less per frame (fly-ki 81.20 -> 80.96). `eligible()`
+  lines less per frame (fly-ki 81.20 -> 80.96). The hooks run those live
+  tests in place, with the same registers and carry on each way out
+  (`FLIGHT_PASSENGER_INLINE_SLOW=1`: a JSR to `fl_is_passenger_live`); the
+  contact hook keeps its native exit next to them, inside branch reach. Per
+  fly-ki frame that is 0.42 lines: B0CA 50.27 -> 50.11, B0B2 29.14 -> 28.91,
+  the companion update 2.27 -> 2.24 (fly-punch the same, fly 0.08).
+  `eligible()`
   (`fl_eligible`, asked by flight_frame and by the movement hooks several
   times a frame) tests the finale flag inline and `$E4`/`$E5`,
   `$E190`/`$E191`, `$EC`/`$ED` as words (`FLIGHT_ELIGIBLE_SLOW=1`: the
