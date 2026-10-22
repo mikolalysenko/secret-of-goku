@@ -252,6 +252,21 @@ same ceiling. Cost: the NMI's tail goes from 86 to 184 master clocks idle
 Frieza's Tree ceiling never overlap (the Tree vista ends long before 42F);
 a core "displayed brightness" service could merge the two hooks.
 
+**Presentation from the live state (2026-10-21).** Playing the chain
+through also showed two bits the module documented as "set by other
+modules beforehand" that nothing set: `EF_EIGHTH` (Dryad's eighth Ball in
+the vista) and `EF_SSJ` (Goku in the permanent form in the bad outcome's
+escape and on King Kai's planet). The browser reads both live
+(`mod.frieza.eighth`, `mod.frieza.permanent`), and a game that reaches the
+Beast through Frieza's arc has both on (Dryad's Ball since event AF, the
+gold form since C5; every finale reference state), so the cartridge's
+vista lacked the eighth Ball and its bad ending showed Goku in base form. The vista now asks Frieza's own flag
+every picture (`frieza_q_eighth`, called directly as the UI calls
+`frieza_q_dormant`; it goes away at C9 as in the browser), and
+`ENDING_BEGIN` sets `EF_SSJ` for a bad outcome from core's
+`!persist_ssj_lock`, which follows Frieza's permanent flag (no bad script
+changes it). The cued tests still force both bits.
+
 ## Scenes
 
 Frame counts are the browser's (`ending_age` counts the phase's frames).
@@ -280,8 +295,11 @@ map's own palettes (BG palettes 1-7 = the map's, backdrop = its sky).
   the browser's decode), 23 16x16 cells in two fitted 15-colour palettes,
   `y = 66 + round(160 rise^2)`, `rise = max(0, 1 - age/96)` (per-age table).
 - The seven Balls (`dragon-balls.png` at size 12, `ki-art.js` frames) on the
-  ellipse around (128, 184 + scroll), Dryad's eighth (`EF_EIGHTH`) at
-  (128, 172 + scroll); Goku from behind (goku module cell, column 0 row 3).
+  ellipse around (128, 184 + scroll), Dryad's eighth at (128, 172 + scroll)
+  while Frieza's state holds it (`mod.frieza.eighth`, asked every picture:
+  `frieza_q_eighth`, from event AF until the wish's revive, C9, clears it;
+  `EF_EIGHTH` forces it for the cued tests); Goku from behind (goku module
+  cell, column 0 row 3).
 - Gold sparks: dragon (age < 96) four rising from `106 + 15 i`; wish
   (age < 72) four at `114 + 24 (i & 1), 132 + 26 (i >> 1)`.
 - Summon: 32 fallout flakes (positions every third frame, cached and block
@@ -674,7 +692,8 @@ JSL, any M/X; registers preserved except where noted.
 
 Story hooks (`story/hooks.asm`): `ENDING_BEGIN` (42F: `story_api_ending_result`
 picks good/fortress/balls/frieza/beast; Frieza's crisis puts the doomed
-globe on its night side), every `ENDING_CUE_*` (6B, A3-A6, DE, E4, 14F,
+globe on its night side; a bad outcome keeps the permanent form, `EF_SSJ`
+from `!persist_ssj_lock`), every `ENDING_CUE_*` (6B, A3-A6, DE, E4, 14F,
 176), `OBJECT_LIST_ENDING` (map 180 gains Dyluck's record), query
 `ENDING_ACTIVE`. Debug scene select: `SCENE` waits of the good-ending,
 bad-ending (phase open) and explosion (phase explode) presets; while the
@@ -710,7 +729,7 @@ WRAM block `!RAM_ORBIT+$80..$B6`:
 
 | Resource | Use |
 | --- | --- |
-| Code | `$A9:8000-FEBC` (324 bytes free); second area `$AA:C000-D9D3` (9,773 bytes of the quarter free) |
+| Code | `$A9:8000-FEE6` (282 bytes free); second area `$AA:C000-D9D3` (9,773 bytes of the quarter free) |
 | Fast data | `E9:0000` (32,678 bytes: crack events, fade sets, spark OAM, window lookups, flight tables), `EC:0000` (6,581 bytes: flight scale templates and widths); `ED`/`EE`/`EF` belong to core |
 | Extended data | ending: 68 blobs / 648,708 bytes (633.50 KiB), including the 188,387-byte orientation atlas. Whole build: 2,176.2 of 2,944 KiB, 767.8 KiB free |
 | WRAM | `!RAM_ORBIT+$80..$B6` |
@@ -759,7 +778,11 @@ WRAM block `!RAM_ORBIT+$80..$B6`:
   the ending module keeps only the event gate at `C1:E77E`. Its
   `STORY_Q_FRIEZA_CRISIS` answer (from the core's impact until the wish)
   puts the doomed globe and the cutaway's globe on their night side.
-  The cutaway test exercises the live crisis query in both states.
+  The cutaway test exercises the live crisis query in both states. The
+  vista calls `frieza_q_eighth` (JSL, DB = `$7E`) for Dryad's Ball when
+  the frieza module is built (`getfilestatus("frieza/data.asm")`, as the
+  UI does), and the bad outcome's form comes from core's
+  `!persist_ssj_lock`, which Frieza keeps with his permanent flag.
 - **world**: `world_nmi_scars` returns while `!w_cut_age` runs (the
   cutaway's VRAM); nothing else changed there.
 - **core** / **layout**: the ending stays in its existing `$A9` bank and
@@ -806,9 +829,9 @@ overruns) are measured on a separate untouched run.
 | `loads` | `emulator-probe__potos-state` | doors through core's event mailbox: 2F under the doomed globe (reloaded, clock on, 99.9%), cue 176 after the flight holds the displayed picture black with the game's `$E6` untouched, door 3FF: the cliff 99.1% of a native load of it, Dyluck present |
 | `dialogue` | `emulator-probe__potos-state` | native opening/reveal in 13 scenarios; every BG3 DMA byte matches WRAM, VMAIN/HDMA correct, safe PPU timing, zero vblank overruns |
 | `cutaway` | the world tests' waterfall checkpoint | actual shots at six sampled targets in both lights plus the default sequence (59 stills); saved-target selection, 192 KiB budget, all 34 VRAM images byte-exact, forced-blank load <215 lines, hardware-safe PPU/DMA, footprint ends by line 254 and trails at most 1, VTIME 196 after deck landing |
-| `finale` | power-on, the scene select's `beast` preset | the fed Beast killed through the native damage consumer (HP 1, 5 queued from Goku), every button wait advanced with B; good ending: phases and cue events in the order of the browser's 42F script (`buildFriezaEnding(0,false)`), `endingResult` 0, the transition black through door 2F while the game's fade-in reaches `$0F`, the summon on map 246, the end card within 6,000 frames of 42F (4,170) and 93.1% of the reference, no black run over 300 frames; from a checkpoint taken while the Beast dies, the unfed Beast: `buildBadEnding('beast')`'s cues, reason 4, the end card within 3,000 frames (1,690) |
-| `finale-frieza` | `preset__battle` | Frieza at his last tier with 1 HP pinned beside Goku (the combat suite's setup), one real punch: the victory beat, C7, C8, 429, 94, 96, 97, the fed Beast killed, 42F's good ending up to the summon (the transition's hold as above) |
-| `finale-party` | `danger-progress__beast-fed2` (Primm and Popoi) | the beast reference's Frieza and challenge state with both recruited; the kill, the cues of `buildFriezaEnding(3,true)` (Popoi revived, the reunion on the cliff), the end card 93.1% |
+| `finale` | power-on, the scene select's `beast` preset | the fed Beast killed through the native damage consumer (HP 1, 5 queued from Goku), every button wait advanced with B; good ending: phases and cue events in the order of the browser's 42F script (`buildFriezaEnding(0,false)`), `endingResult` 0, the transition black through door 2F while the game's fade-in reaches `$0F`, the summon on map 246, the end card within 6,000 frames of 42F (4,170) and 93.1% of the reference, no black run over 300 frames; Dryad's eighth Ball in the summon (`mod.frieza.eighth`), gone 60 frames after the revive (C9); from a checkpoint taken while the Beast dies, the unfed Beast: `buildBadEnding('beast')`'s cues, reason 4, the end card within 3,000 frames (1,690) and 93.1%, Goku's cell in the browser's permanent form (98.3% Super Saiyan, 75.1% base) |
+| `finale-frieza` | `preset__battle` | Frieza at his last tier with 1 HP pinned beside Goku (the combat suite's setup), one real punch: the victory beat, C7, C8, 429, 94, 96, 97, the fed Beast killed, 42F's good ending up to the summon (the transition's hold as above), Dryad's Ball in the vista |
+| `finale-party` | `danger-progress__beast-fed2` (Primm and Popoi) | the beast reference's Frieza and challenge state with both recruited; the kill, the cues of `buildFriezaEnding(3,true)` (Popoi revived, the reunion on the cliff), Dryad's Ball until C9, the end card 93.1% |
 
 Sounds are checked on the calls into the audio module (`audio_sfx`,
 `audio_fade` watched in Mesen): silence at the scatter's and the death's
@@ -820,7 +843,9 @@ import.
 
 The `finale` cases fail on the cartridge before the displayed-brightness
 fix: the good ending stays black in the transition on map 246 (`$E2` 1,
-`$E6` 0, 6B never entered); `loads` fails on the clamped `$E6`.
+`$E6` 0, 6B never entered); `loads` fails on the clamped `$E6`. Before the
+live presentation bits they fail on the missing eighth Ball and the bad
+end card's base-form Goku.
 
 The scene select's ending presets (`node snes/test/debug/run.mjs
 good-ending bad-ending explosion`) start from power-on: bad-ending and

@@ -17,8 +17,8 @@
 --     the party, the kill, the good ending with Popoi's revival and the
 --     reunion on the cliff, to the end card.
 -- Prelude (run.mjs): FINALE, DBG_WORK, PRESET_BEAST, FZP_BEAST, FZP_STAGE,
--- for 'frieza' BATTLE_WRITES, FZF_X/Y/CLOCK, FZ_MUSIC, FZM_BATTLE,
--- FZST_BATTLE, for 'party' PARTY_BUNDLE, PARTY_WRITES.
+-- EIGHTH_WORD, for 'frieza' BATTLE_WRITES, FZF_X/Y/CLOCK, FZ_MUSIC,
+-- FZM_BATTLE, FZST_BATTLE, for 'party' PARTY_BUNDLE, PARTY_WRITES.
 local EV = 0x7EDA00                  -- story: the script last entered by redirect
 
 local function beastActor()
@@ -54,6 +54,16 @@ local function cardShot(name)
   H.result(name, string.format('%d,%d,%d,%d', bx, by, dir, walk))
 end
 
+-- Dryad's eighth Ball in the vista: its OAM word (run.mjs EIGHTH_WORD, the
+-- vista's cell 7 with the Balls' attributes) on a visible line.
+local function eighthShown()
+  local n = 0
+  for i = 0, 127 do
+    if (H.oam(i * 4 + 2) | (H.oam(i * 4 + 3) << 8)) == EIGHTH_WORD and H.oam(i * 4 + 1) < 224 then n = n + 1 end
+  end
+  return n
+end
+
 -- Follow the story from now on: B on every button wait ($D0 = $83), until
 -- `stop(phase)` holds, or the end card has shown for 60 frames, or
 -- `limit` frames, or 900 black frames in a row. Recorded under `tag`:
@@ -62,11 +72,13 @@ end
 -- brightness 0 or forced blank), the transition's hold (the displayed
 -- picture must stay black while the game's own fade shadow $E6 is free to
 -- reach full brightness: door 2F's fade-in has to finish before the
--- script can reach the summon, 6B), and the frames from 42F to the end.
+-- script can reach the summon, 6B), Dryad's eighth Ball at the summon's
+-- age 60 and 60 frames after the wish's revive (C9), and the frames from
+-- 42F to the end.
 local function follow(tag, limit, stop)
   local phases, events = {}, {}
   local lastPhase, lastEvent = 0, -1
-  local began, completeAt
+  local began, completeAt, revivedAt
   local black, blackMax, blackAt = 0, 0, ''
   local holdFrames, holdLit, holdNative = 0, 0, 0
   local tap = 0
@@ -88,6 +100,12 @@ local function follow(tag, limit, stop)
       end
     end
     if ph ~= 0 then lastPhase = ph end
+    if ph == E.P.summon and H.r16(E.age) == 60 then H.result(tag .. '_eighth_summon', eighthShown()) end
+    if ev == 0x0C9 and not revivedAt then revivedAt = f end
+    if revivedAt and f == revivedAt + 60 then
+      H.result(tag .. '_eighth_revived', eighthShown())
+      H.result(tag .. '_revived_phase', ph)
+    end
     if not began and (H.r16(E.flags) & 0x8000) ~= 0 then
       began = f
       reason = H.r16(0x7EDC94)

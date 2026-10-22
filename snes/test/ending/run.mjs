@@ -400,19 +400,39 @@ async function finaleCheck(r,out){
   expect(r.checkpoint,'checkpoint while the Beast dies');
   endingRun(r,'good',endingPlan(buildFriezaEnding(0,false),'good'),{reason:0,frames:6000,black:300});
   transitionHold(r,'good');
+  eighthBall(r,'good');
   endingRun(r,'bad',endingPlan(buildBadEnding('beast'),'bad'),{reason:4,frames:3000,black:120});
-  await endCard(r,out,'good-complete','goku',GOOD_CARD);
+  await endCard(r,out,'good-complete','goku',GOOD_CARD,{form:true});
+  // planet-view.js kaiPlanet: the bad outcome's Goku keeps the permanent
+  // form (mod.frieza.permanent, as in the preset's state)
+  await endCard(r,out,'bad-complete',browserState('beast').frieza.permanent?'ssj':'goku',BAD_CARD,{form:true});
+}
+// Dryad's eighth Ball (shenron-ending.js: drawn while mod.frieza.eighth,
+// true in the preset's state) shows in the vista until the wish's revive
+// (C9, frieza.js revive() clears it).
+function eighthBall(r,tag){
+  const want=browserState('beast').frieza.eighth?1:0;
+  expect(r[`${tag}_eighth_summon`]===want,`${tag}: Dryad's eighth Ball in the summon's vista ${r[`${tag}_eighth_summon`]} (browser ${want})`);
+  expect(r[`${tag}_revived_phase`]===PHASE.wish&&r[`${tag}_eighth_revived`]===0,`${tag}: no eighth Ball in the wish after the revive (${r[`${tag}_eighth_revived`]}, phase ${r[`${tag}_revived_phase`]})`);
 }
 // An end card on King Kai's planet against planet-view's own (Bubbles where
-// the cartridge's walk put him, as the kai test).
-const GOOD_CARD='        SECRET OF GOKU\n          THE END';
-async function endCard(r,out,shot,goku,card){
+// the cartridge's walk put him, as the kai test). With `form`, Goku's own
+// 32x32 cell must also match the browser's form better than the other one
+// (his hair is too few pixels for the whole-screen score).
+const GOOD_CARD='        SECRET OF GOKU\n          THE END',BAD_CARD='         BAD ENDING\n      THE WORLD IS GONE.';
+async function endCard(r,out,shot,goku,card,{form=false}={}){
   if(!r[shot]){problems.push(`no still ${shot}`);return;}
   const [x,y,dir]=r[shot].split(',').map(Number);
-  const ref=await kaiReference({rom:baseRom,kaiFrame:3,bubbles:{x,y,frame:[4,8,12,12][dir]+1,flip:dir===2},goku,card});
+  const make=g=>kaiReference({rom:baseRom,kaiFrame:3,bubbles:{x,y,frame:[4,8,12,12][dir]+1,flip:dir===2},goku:g,card});
+  const ref=await make(goku);
   writeFileSync(join(out,`${shot}-ref.png`),writeRef(null,ref));
   const m=compare(join(out,`${shot}.png`),ref);r[`${shot}_match`]=m;
   expect(m>=0.9,`${shot} matches the reference at ${(m*100).toFixed(1)}%`);
+  if(!form)return;
+  const cell={x0:151-16,y0:162-31,x1:151+16,y1:162+1},other=goku==='ssj'?'goku':'ssj';
+  const a=compare(join(out,`${shot}.png`),ref,{rect:cell}),b=compare(join(out,`${shot}.png`),await make(other),{rect:cell});
+  r[`${shot}_cell_${goku}`]=a;r[`${shot}_cell_${other}`]=b;
+  expect(a>b,`${shot}: Goku's cell matches the browser's ${goku} form at ${(a*100).toFixed(1)}%, the ${other} form at ${(b*100).toFixed(1)}%`);
 }
 // The full party (Primm and Popoi recruited): Popoi's revival, the reunion
 // on the cliff (176, door 3FF), Potos, the end card.
@@ -421,6 +441,7 @@ async function finalePartyCheck(r,out){
   expect(r.killed&&r.beast_state===3,`the fed Beast's challenge started and the Beast died (${r.beast_state})`);
   endingRun(r,'party',endingPlan(buildFriezaEnding(3,true),'good'),{reason:0,frames:6500,black:300});
   transitionHold(r,'party');
+  eighthBall(r,'party');
   await endCard(r,out,'party-complete','goku',GOOD_CARD);
 }
 // Frieza's defeat into the ending: the victory beat, C7 (the pouch back),
@@ -435,27 +456,36 @@ function finaleFriezaCheck(r){
   expect(r.frieza_stop==='stop'&&JSON.stringify(r.frieza_phases)===JSON.stringify([PHASE.transition,PHASE.summon]),`Shenron summoned after the transition (phases ${JSON.stringify(r.frieza_phases)}, stopped on ${r.frieza_stop})`);
   expect(r.frieza_black_max<=300,`black for ${r.frieza_black_max} frames in a row (${r.frieza_black_at}), at most 300`);
   transitionHold(r,'frieza');
+  const eighth=browserState('battle').frieza.eighth?1:0;
+  expect(r.frieza_eighth_summon===eighth,`Dryad's eighth Ball in the summon's vista ${r.frieza_eighth_summon} (browser ${eighth})`);
 }
 // Their prelude: the scene select's work area and preset, Frieza's fields
 // (snes/test/frieza/state.mjs maps the browser's battle state onto them).
 const {defs:FZDEFS,friezaWrites,luaWrites}=await import('../frieza/state.mjs');
+// The browser's mod state of a preset's reference (read when a finale case
+// runs): the beast preset's Frieza holds the eighth Ball and the permanent
+// form, which the vista and the bad end card show.
+const refs={};
+const browserState=preset=>refs[preset]??=JSON.parse(readFileSync(join(mainCheckout(),`.local/snes-ref/${preset}/state.json`),'utf8')).goku;
+// Dryad's Ball's OAM word in the vista: cell 7 with the Balls' attributes
+// (vista.asm !CELL_VS_BALL, !VS_ATTR_BALL; ball i is cell i, tile 2i).
+const vistaDefine=n=>{const m=readFileSync(resolve(repo,'snes/src/modules/ending/vista.asm'),'utf8').match(new RegExp(`^!${n}\\s*=\\s*(\\$?)([0-9A-Fa-f]+)`,'m'));
+  if(!m)throw Error(`vista define ${n} missing`);return parseInt(m[2],m[1]?16:10);};
+const EIGHTH_WORD=((vistaDefine('CELL_VS_BALL')+7)*2)|vistaDefine('VS_ATTR_BALL');
 const fzAddr=n=>{const v=FZDEFS[n];if(v===undefined)throw Error(`frieza define ${n} missing`);return '0x'+(v<0x10000?0x7E0000|v:v).toString(16);};
 function finalePrelude(mode){
   const m=sym.match(/^([0-9A-F]{2}):([0-9A-F]{4}) debug_addresses$/m);
   const catalog=JSON.parse(readFileSync(resolve(repo,'dist/snes/gen/debug/catalog.json'),'utf8'));
   let p=`FINALE='${mode}'\nDBG_WORK=${m?'0x'+m[1]+m[2]:'0x317600'}\nPRESET_BEAST=${catalog.presets.findIndex(x=>x.kind==='beast')}\n`+
-    `FZP_BEAST=${fzAddr('fzp_beast')}\nFZP_STAGE=${fzAddr('fzp_stage')}\n`;
+    `FZP_BEAST=${fzAddr('fzp_beast')}\nFZP_STAGE=${fzAddr('fzp_stage')}\nEIGHTH_WORD=0x${EIGHTH_WORD.toString(16)}\n`;
   if(mode==='frieza'){
-    const g=JSON.parse(readFileSync(join(mainCheckout(),'.local/snes-ref/battle/state.json'),'utf8')).goku;
-    const f=JSON.parse(JSON.stringify(g.frieza));
+    const f=JSON.parse(JSON.stringify(browserState('battle').frieza));
     Object.assign(f.boss,{x:310,y:414,nodes:[{x:310,y:414}],node:0,clock:9999,tier:2,hp:1});
-    p+=`BATTLE_WRITES=${luaWrites(friezaWrites(f,g.challenge))}\nFZF_X=${fzAddr('fzf_x')}\nFZF_Y=${fzAddr('fzf_y')}\nFZF_CLOCK=${fzAddr('fzf_clock')}\n`+
+    p+=`BATTLE_WRITES=${luaWrites(friezaWrites(f,browserState('battle').challenge))}\nFZF_X=${fzAddr('fzf_x')}\nFZF_Y=${fzAddr('fzf_y')}\nFZF_CLOCK=${fzAddr('fzf_clock')}\n`+
       `FZ_MUSIC=${fzAddr('fz_music')}\nFZM_BATTLE=${FZDEFS.FZM_BATTLE}\nFZST_BATTLE=${FZDEFS.FZST_BATTLE}\n`;
   }
-  if(mode==='party'){
-    const g=JSON.parse(readFileSync(join(mainCheckout(),'.local/snes-ref/beast/state.json'),'utf8')).goku;
-    p+=`PARTY_BUNDLE='danger-progress__beast-fed2'\nPARTY_WRITES=${luaWrites(friezaWrites({...g.frieza,popoiMember:true,primmMember:true},g.challenge))}\n`;
-  }
+  if(mode==='party')
+    p+=`PARTY_BUNDLE='danger-progress__beast-fed2'\nPARTY_WRITES=${luaWrites(friezaWrites({...browserState('beast').frieza,popoiMember:true,primmMember:true},browserState('beast').challenge))}\n`;
   return p;
 }
 

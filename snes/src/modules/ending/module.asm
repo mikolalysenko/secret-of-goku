@@ -72,8 +72,8 @@
 !EP_MAX        = $0E
 
 !EF_BAD     = $0001    ; bad outcome (doomed planet)
-!EF_EIGHTH  = $0002    ; Dryad's eighth Ball beside the seven
-!EF_SSJ     = $0004    ; Goku stays Super Saiyan (bad ending: permanent form)
+!EF_EIGHTH  = $0002    ; Dryad's eighth Ball beside the seven (forced; else Frieza's live flag)
+!EF_SSJ     = $0004    ; Goku stays Super Saiyan (bad ending: permanent form, set at 42F)
 !EF_GOLD    = $0008    ; death started in Super Saiyan (revert cue at 18)
 !EF_ORBIT   = $0010    ; death in orbit: the orbit module draws until black
 !EF_NIGHT   = $0020    ; Frieza's crisis was active: the doomed globe shows its night side
@@ -605,7 +605,10 @@ ending_debug_explode:
 
 ; Entering 42F: endingResult() picks the outcome; Frieza's five-minute
 ; crisis puts the doomed globe on its night side (planet-view crisisActive).
-; Presentation bits other modules set beforehand (!EF_SSJ, !EF_EIGHTH) stay.
+; A bad outcome keeps the permanent Super Saiyan form in the escape and on
+; King Kai's planet (planet-view.js mod.frieza.permanent; core's
+; !persist_ssj_lock follows Frieza's flag, and no bad script changes it).
+; Bits set beforehand (!EF_SSJ, !EF_EIGHTH: the tests' cues) stay.
 ending_hook_begin:
 	REP #$30
 	LDA.l !ending_flags
@@ -622,7 +625,13 @@ ending_hook_begin:
 	LDA.l !ending_tmp
 	ORA.w #!EF_BAD
 	STA.l !ending_tmp
-	LDA.w #!STORY_Q_FRIEZA_CRISIS
+	LDA.l !persist_ssj_lock
+	AND.w #$00FF
+	BEQ +
+	LDA.l !ending_tmp
+	ORA.w #!EF_SSJ
+	STA.l !ending_tmp
++	LDA.w #!STORY_Q_FRIEZA_CRISIS
 	JSR story_query_call
 	BEQ .begin
 	LDA.l !ending_tmp

@@ -529,8 +529,7 @@ vista_flakes_build:
 ; (128, 172 + scroll), drawn after the first seven (in front). Ball i is
 ; cell i: tile 2i.
 vista_balls:
-	LDA.l !ending_flags
-	AND.w #!EF_EIGHTH
+	JSR vista_eighth
 	BEQ .seven
 	LDA.w #128-8
 	STA.w !o_x
@@ -560,6 +559,25 @@ vista_balls:
 	SBC.w #4
 	TAX
 	BPL .loop
+	RTS
+
+; Dryad's eighth Ball shows while Frieza's state holds it, as
+; shenron-ending.js asks mod.frieza.eighth for every picture: from event AF
+; until the wish's revive (C9) clears it. !EF_EIGHTH forces it (the tests'
+; cues). Z clear = drawn. M16/X16, DB = $32, D = 0.
+vista_eighth:
+	LDA.l !ending_flags
+	AND.w #!EF_EIGHTH
+	BNE .out
+if getfilestatus("frieza/data.asm") == 0
+	PHB
+	PEA $7E7E : PLB : PLB
+	JSL frieza_q_eighth           ; the story query contract: DB = $7E
+	PLB
+	REP #$30
+	CMP.w #$0000
+endif
+.out
 	RTS
 
 ; Shenron: blit(dragon, 92, y, 72, 79), his cells from the generator's
