@@ -340,6 +340,11 @@ Palace walk; `16A`/`16B`/`55A`/`55B` broken doors; `558` Northtown captive.
 
 The browser kept spell grants only in checkpoints; here they persist with the
 save sidecar, so a save made before recruiting a companion keeps the spells.
+The field-frame callback tests the version byte before calling
+`story_init_persist`, and the adjacent fast-track and spell-grant bytes
+(`+$05`/`+$06`, asserted adjacent) as one word before their two tests:
+an ordinary frame costs 0.57 rather than 0.71 scanlines
+(`STORY_IDLE_SLOW=1` restores the former tests).
 
 ## API
 
