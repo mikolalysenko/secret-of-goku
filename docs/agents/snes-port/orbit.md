@@ -518,14 +518,15 @@ common cases itself: a body at the rows the limits count with nothing
 to yield to; one blocked again whose hold is blocked, as long as its
 least and yielding to both groups (nothing changes); and one blocked,
 whose hold it makes as `scline.asm` `sl_yield` does. A body that moved
-or left the screen, or holds with room, goes
-through `sl_note`. In the clash's launches, where all three yield with
-young holds, the drawing is 2-3 lines shorter a frame for some 20
-frames. The check build (`-DHELD_CHECK`) has `sl_note` make every such
-hold as well and compares the two (the yield, the hold, the room, the
-held bit): 1,446 in the `clash`, 45 in the `fight`, all equal. The
-bursts stay before the bodies in OAM, as the browser layers them, and no body hides for a burst, a shot or
-Frieza. Measured on every frame's OAM with and without the bodies'
+or left the screen, or holds with room, goes through `sl_note`. In the
+clash's launches, where all three bodies yielded with young holds before
+2e24353 (the planetoid alone now), this made the drawing 2-3 lines
+shorter a frame for some 20 frames. The check build (`-DHELD_CHECK`) has
+`sl_note` make every such hold as well and compares the two (the yield,
+the hold, the room, the held bit): 1,272 in the `clash`, 8 in the
+`fight`, all equal. The bursts stay before the bodies in OAM, as the
+browser layers them, and no body hides for a burst, a shot or Frieza.
+Measured on every frame's OAM with and without the bodies'
 entries (Mesen, the tests' pads, the default build):
 
 | Run | The bodies cost the others (Stage A) | Held back (hides) |
