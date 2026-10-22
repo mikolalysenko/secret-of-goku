@@ -255,9 +255,16 @@ culls too: 898cc07 had dropped its cull (12 lines in each launch's first
 two frames; its rays lose no slivers without it), which left the stars on
 a launch's rows going in two steps 18 and 33 frames after it (the lists'
 rebuilds) and its distant bodies waiting for the lists. In the `fight`
-the cull spares the beams some 300 slivers (530 without it). Frieza's
-finger laser crosses the screen in 7 cells: with its
-hit's bursts, Frieza and Goku its lines pass 34 without any star, so the
+the cull spares the beams some 300 slivers (530 without it). A remake
+starts its rows at $80 (no beam, no body: free once made), so neither the
+beams' slivers nor a body's go in with a test per row; the base and the
+beams' slivers are made with the bodies' in the third code area
+(`scline.asm` `sl_count`), a body's room on a beam's rows is tested
+against one threshold, the 28 rows' limits are made unrolled, and a
+group's lines take (n - 1) Py from the multiplier: a remake frame's stars
+stage is 1.6 lines shorter in the `fight` and 1.8 in the `clash`.
+Frieza's finger laser crosses the screen in 7 cells: with its hit's
+bursts, Frieza and Goku its lines pass 34 without any star, so the
 laser's cells whose middle lies within 16 pixels of the freshest hit
 (younger than 24 frames) are hidden, the bursts covering the laser there
 (the laser stops a few pixels short of them).
@@ -1024,7 +1031,7 @@ are untouched).
 
 | Range | Use |
 | --- | --- |
-| `$6000-$60FF` | camera, globe and star state (with the distant bodies' applied camera y and travel, their counted, blocked and moved bits, the rows the limits count and as last noted; the beam groups' rows at the last limits, `$609A`; the places' generation, `$60F6`), the shown HDMA set and its band lines |
+| `$6000-$60FF` | camera, globe and star state (with the distant bodies' applied camera y and travel, their blocked and moved bits, the rows the limits count and as last noted; the beam groups' rows at the last limits, `$609A`; the places' generation, `$60F6`), the shown HDMA set and its band lines |
 | `$6100-$67E3` | two globe window blocks (868 bytes each); in the cosmic montage a shot's state and HDMA tables, in its pullback the Death Ball buffers' state |
 | `$67E4-$67FF` | the distant bodies' projection: `N_x`, `N_y` per body (32 bits each), the camera's radius and x it has applied |
 | `$6800-$686F` | two indirect HDMA table sets (M7A, M7D, windows), the first set's BGMODE table |
@@ -1042,9 +1049,9 @@ are untouched).
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-FB8D` | `!CODE_ORBIT`: 30.9 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FBE5`); bindings at `$A7:FC00-FD6E` |
+| Code `$A7:8000-FB51` | `!CODE_ORBIT`: 30.8 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FBA9`); bindings at `$A7:FC00-FD6E` |
 | Code `$A1:C000-FD99` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload, the distant bodies' projection (`scenery.asm`) (15.4 KiB of 16) |
-| Code `$AB:C000-D4DB` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (5.2 KiB of 16) |
+| Code `$AB:C000-D61C` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (5.5 KiB of 16) |
 | Data `$E7:0000-76E1` | stars, asin rows, chord scales, rim tables, palettes (and the victory's: Frieza's death colours, the whiteout's backdrop and band colours), star tiles, heading/step tables, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (29.7 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |

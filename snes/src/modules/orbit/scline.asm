@@ -205,18 +205,55 @@ sl_bodies:
 	STA.w !s_left                  ; (made again: sl_count)
 +	RTS
 
-; stars_limits, making the limits (sc_k: the beams' slivers on each row,
-; !SC_FREE where none): the bodies' slivers on their rows, then the limits
-; (sl_limits): none on a beam's row, (34 - !SL_MARGIN - slivers) / 2 on a
-; row of the bodies' alone. A body is blocked (sb_blk) when one of its
-; rows a beam crosses has no room for it (34 - !SC_SPARE), else its
-; slivers go on all its rows (bit 7 marks those no beam crosses: the
-; beams' slivers stay below 128) and, on a beam's rows, it is counted
-; there (sb_cnt). And the stars on the rows a beam newly holds are
-; hidden at once (sl_cull), unless they were hidden already and no list's
-; build has begun since (sl_culled).
+; stars_limits, making the limits: on each row (sc_k, $80 for none) the
+; beams' slivers (sc_sig) and the bodies' slivers on their rows, then the
+; limits (sl_limits): none on a beam's row, (34 - !SL_MARGIN - slivers) /
+; 2 on a row of the bodies' alone, no limit on a row of neither. A body
+; is blocked (sb_blk) when one of its rows a beam crosses has no room for
+; it (34 - !SC_SPARE), else its slivers go on all its rows (bit 7 marks
+; those no beam crosses: the beams' slivers stay below 128). And the
+; stars on the rows a beam newly holds are hidden at once (sl_cull),
+; unless they were hidden already and no list's build has begun since
+; (sl_culled).
 sl_count:
-	STZ.w !sb_cnt
+	; the rows: $80 (no beam, no body: free once made, sl_limits), then
+	; the beams' slivers
+	LDA.w #$8080
+	LDX.w #26
+-	STA.w !sc_k,X
+	DEX : DEX
+	BPL -
+	STZ.w !sc_on
+	LDY.w #$0000
+.sum
+	SEP #$20
+	LDA.w !sc_sig,Y
+	BEQ .sumNext
+	STA.w !s_tmp+0
+	STA.w !sc_on                   ; (a row with a limit)
+	REP #$20
+	LDA.w !sc_sig+2,Y
+	AND.w #$00FF
+	INC
+	STA.w !s_tmp+2                 ; (past its bottom row)
+	LDA.w !sc_sig+1,Y
+	AND.w #$00FF
+	TAX
+	SEP #$20
+-	LDA.w !sc_k,X
+	BPL +                          ; (slivers there already)
+	LDA.b #0                       ; ($80: the row's first)
++	CLC : ADC.w !s_tmp+0
+	STA.w !sc_k,X
+	INX
+	CPX.w !s_tmp+2
+	BCC -
+.sumNext
+	REP #$20
+	INY : INY : INY : INY
+	CPY.w #8
+	BCC .sum
+	; the bodies'
 	STZ.w !sb_blk
 	LDX.w #0
 .body
@@ -224,41 +261,33 @@ sl_count:
 	BNE +
 	JMP .next
 +	JSR sl_rows
-	STZ.w !sl_n                    ; (rows a beam crosses)
 	PHX
 	JSR sl_near                    ; (a beam group's rows meet its rows?)
 	LDX.w !sl_t
 	SEP #$20
 	BCC .apply
+	LDA.b #34-!SC_SPARE+1          ; (no room from these slivers on)
+	SEC : SBC.w !sl_s
+	STA.w !sl_n
 -	LDA.w !sc_k,X                  ; room on each row a beam crosses?
-	BMI +                          ; (none there: free, or the bodies' alone)
-	INC.w !sl_n
-	CLC : ADC.w !sl_s
-	CMP.b #34-!SC_SPARE+1
+	BMI +                          ; (none there: the bodies' alone)
+	CMP.w !sl_n
 	BCS .full
 +	CPX.w !sl_b
 	INX
 	BCC -
 	LDX.w !sl_t
-.apply                             ; its slivers on all its rows
--	LDA.w !sc_k,X
-	CMP.b #!SC_FREE
-	BNE +
-	LDA.b #$80                     ; (the bodies' alone)
-+	CLC : ADC.w !sl_s
+.apply                             ; its slivers on all its rows (bit 7
+-	LDA.w !sc_k,X                  ; marks those no beam crosses)
+	CLC : ADC.w !sl_s
 	STA.w !sc_k,X
 	CPX.w !sl_b
 	INX
 	BCC -
 	LDA.b #1
 	STA.w !sc_on                   ; (a row with a limit)
-	LDA.w !sl_n
 	REP #$20
 	PLX
-	AND.w #$00FF
-	BEQ .next                      ; (on no beam's rows)
-	LDA.l sc_bodybits,X
-	TSB.w !sb_cnt
 	BRA .next
 .full
 	REP #$20
@@ -270,14 +299,36 @@ sl_count:
 	CPX.w #!OSC_N*2
 	BCC .body
 	; the limits (sl_limits: none on a beam's row; on a row of the bodies'
-	; alone, (34 - margin - slivers) / 2)
+	; alone, (34 - margin - slivers) / 2; no limit on a row of neither)
 	SEP #$30
-	LDY.b #27
--	LDX.w !sc_k,Y
-	LDA.l sl_limits,X
-	STA.w !sc_k,Y
-	DEY
-	BPL -
+	LDX.w !sc_k+0 : LDA.l sl_limits,X : STA.w !sc_k+0
+	LDX.w !sc_k+1 : LDA.l sl_limits,X : STA.w !sc_k+1
+	LDX.w !sc_k+2 : LDA.l sl_limits,X : STA.w !sc_k+2
+	LDX.w !sc_k+3 : LDA.l sl_limits,X : STA.w !sc_k+3
+	LDX.w !sc_k+4 : LDA.l sl_limits,X : STA.w !sc_k+4
+	LDX.w !sc_k+5 : LDA.l sl_limits,X : STA.w !sc_k+5
+	LDX.w !sc_k+6 : LDA.l sl_limits,X : STA.w !sc_k+6
+	LDX.w !sc_k+7 : LDA.l sl_limits,X : STA.w !sc_k+7
+	LDX.w !sc_k+8 : LDA.l sl_limits,X : STA.w !sc_k+8
+	LDX.w !sc_k+9 : LDA.l sl_limits,X : STA.w !sc_k+9
+	LDX.w !sc_k+10 : LDA.l sl_limits,X : STA.w !sc_k+10
+	LDX.w !sc_k+11 : LDA.l sl_limits,X : STA.w !sc_k+11
+	LDX.w !sc_k+12 : LDA.l sl_limits,X : STA.w !sc_k+12
+	LDX.w !sc_k+13 : LDA.l sl_limits,X : STA.w !sc_k+13
+	LDX.w !sc_k+14 : LDA.l sl_limits,X : STA.w !sc_k+14
+	LDX.w !sc_k+15 : LDA.l sl_limits,X : STA.w !sc_k+15
+	LDX.w !sc_k+16 : LDA.l sl_limits,X : STA.w !sc_k+16
+	LDX.w !sc_k+17 : LDA.l sl_limits,X : STA.w !sc_k+17
+	LDX.w !sc_k+18 : LDA.l sl_limits,X : STA.w !sc_k+18
+	LDX.w !sc_k+19 : LDA.l sl_limits,X : STA.w !sc_k+19
+	LDX.w !sc_k+20 : LDA.l sl_limits,X : STA.w !sc_k+20
+	LDX.w !sc_k+21 : LDA.l sl_limits,X : STA.w !sc_k+21
+	LDX.w !sc_k+22 : LDA.l sl_limits,X : STA.w !sc_k+22
+	LDX.w !sc_k+23 : LDA.l sl_limits,X : STA.w !sc_k+23
+	LDX.w !sc_k+24 : LDA.l sl_limits,X : STA.w !sc_k+24
+	LDX.w !sc_k+25 : LDA.l sl_limits,X : STA.w !sc_k+25
+	LDX.w !sc_k+26 : LDA.l sl_limits,X : STA.w !sc_k+26
+	LDX.w !sc_k+27 : LDA.l sl_limits,X : STA.w !sc_k+27
 	REP #$30
 	STZ.w !sb_mv
 	; the stars on the rows a beam newly holds, hidden now (the lists, built
@@ -367,12 +418,15 @@ sl_near:
 	SEC
 	RTS
 
-; A row's stars allowed for its slivers (sc_k as made: !SC_FREE none;
-; bit 7 a row of the bodies' alone; else a beam's row, which holds none).
+; A row's stars allowed for its slivers (sc_k as made: $80 neither a beam
+; nor a body, !SC_FREE; bit 7 a row of the bodies' alone; else a beam's
+; row, which holds none).
 sl_limits:
 	!sl_v = 0
 	while !sl_v < 256
-		if !sl_v == !SC_FREE
+		if !sl_v == 128
+			db !SC_FREE
+		elseif !sl_v == !SC_FREE
 			db !SC_FREE
 		elseif !sl_v >= 128
 			if 34-!SL_MARGIN-(!sl_v-128) > 0
@@ -387,17 +441,16 @@ sl_limits:
 	endwhile
 
 ; A16 = a body's rows signature: sl_t its top row, sl_b its bottom row,
-; sl_s its slivers a line.
+; sl_s its slivers a line. Y16 lost.
 sl_rows:
-	PHA
+	TAY
 	AND.w #$001F
 	STA.w !sl_t
-	PLA
-	PHA
+	TYA
 	LSR : LSR : LSR : LSR : LSR
 	AND.w #$001F
 	STA.w !sl_b
-	PLA
+	TYA
 	XBA : LSR : LSR
 	AND.w #$0003
 	ASL
@@ -571,10 +624,9 @@ sl_cull:
 	JMP .list
 +	RTS
 
-; stars_limits_reset: no body on the lines, none counted, blocked or held;
-; every list as made under the limits now.
+; stars_limits_reset: no body on the lines, none blocked or held; every
+; list as made under the limits now.
 sl_reset:
-	STZ.w !sb_cnt
 	STZ.w !sb_blk
 	STZ.w !sb_mv
 	STZ.w !sb_held

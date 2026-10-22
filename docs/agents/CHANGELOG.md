@@ -4,6 +4,26 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the limits' remake costs less (2026-10-21)
+
+- A remake of the stars' row limits starts its rows at $80 (no beam, no
+  body: free once made) instead of the free value, so neither the beams'
+  slivers nor a body's go in with a test per row. The base and the beams'
+  slivers are made with the bodies' in the third code area (`sl_count`),
+  which leaves 60 bytes free in the orbit's first code bank.
+- A body's room on a beam's rows is tested against one threshold; the
+  bodies' count on a beam's rows (`sb_cnt`, without a reader since the
+  bodies stopped waiting for the star lists) goes; a body's rows decode
+  without the stack; the 28 rows' limits are made unrolled; a group's
+  lines take `(n - 1) Py` from the multiplier instead of a loop.
+- The limits come out the same at every remake of the `fight`, and of
+  the `clash` until its fewer repeated pictures shift its later frames.
+  A remake frame's stars stage: 20.7 lines instead of 22.3 in the
+  `fight`, 19.4 instead of 21.2 in the `clash`.
+- Repeated pictures: the `fight` summed over its 8 frame phases
+  (`ORBIT_FIGHT_EXTRA=0..7`) 75 instead of 80 (per phase 9 9 10 9 10 9 9
+  10; phase 4 no longer fails with 13), the `clash` 38 instead of 39.
+
 ## Orbit: the fight and the clash check that the picture holds steady (2026-10-21)
 
 - `watch.lua` `W.flicker`: on each frame's OAM under the PPU's line

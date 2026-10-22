@@ -132,8 +132,7 @@ endmacro
 !g_ybase    = !SB+$014            ; texel row at the disc centre
 !g_top      = !SB+$016            ; first globe line on screen
 !g_bot      = !SB+$018            ; last globe line on screen
-!sb_cnt     = !SB+$01A            ; the distant bodies counted on the rows a beam crosses (bits 0-2: scline.asm)
-!sb_blk     = !SB+$01C            ;   those blocked there (no room: not drawn)
+!sb_blk     = !SB+$01C            ; the distant bodies blocked on the rows a beam crosses (no room: not drawn; bits 0-2: scline.asm)
 !g_cx       = !SB+$01E            ; centre column the window block holds
 !sb_mv      = !SB+$020            ; the distant bodies whose rows changed since the limits were made (scline.asm)
 !sc_ax      = !SB+$022            ;   the frame's travelX (cam_tdx) it has applied
