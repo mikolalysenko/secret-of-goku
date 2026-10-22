@@ -11,6 +11,8 @@
 
 beam_prep_again_far:
 	JSR beam_prep_again : RTL
+beam_run_far:
+	JSR beam_run : RTL
 beam_prep_keep_far:
 	JSR beam_prep_keep : RTL
 
@@ -90,6 +92,169 @@ beam_prep_keep:
 +	LDX.w !bg_tmp+14
 	RTS
 
+; ---------------------------------------------------------------------------
+; Group X16's run into its cache (beam.asm beam_build_run, its chains
+; prepared: bp_n, bp_tile, bp_x and bp_y their cell 0's top left, the step
+; bp_dx, bp_dy), cell index-major: each chain's cell at its cell 0's place
+; plus the index times the step, left out off the screen (x + 31 past 286,
+; y + 31 past 254) or wholly inside the band layers' lines (y + 31 above
+; bw_ymin); the high-table bits gathered four entries a byte, each entry's
+; shifted in from the top (x bit 8, then large); the run's length after
+; each index (12, below a band layer its length); its bytes and this
+; frame's signature. About half the old loop's cost a cell: the chains'
+; places are not stepped cell by cell, the bits need no table or count, the
+; write pointer stays in X. Keeps X.
+beam_run:
+	TXA
+	XBA : LSR                      ; (256 bytes a group)
+	CLC : ADC.w #!BC_OAM
+	STA.w !bp_base
+	TXA
+	ASL : ASL : ASL                ; (16 high-table bytes a group)
+	CLC : ADC.w #!BC_HI
+	STA.w !bp_hib
+	TXA
+	BEQ +
+	LDA.w #24                      ; (12 lengths a group)
++	CLC : ADC.w #!BC_BND
+	STA.w !bp_ptr                  ; (the next length's address)
+	LDA.w !bw_ymin,X
+	STA.w !bc_tmp                  ; (y + 31 above it: inside the layers' lines)
+	LDA.w #12                      ; indices: 12, below a band layer its length
+	LDY.w !bw_ymin,X
+	BEQ +
+	LDA.w !bw_len,X
+	CMP.w #12
+	BCC +
+	LDA.w #12
++	STA.w !bg_ct
+	LDA.w #31                      ; (the index's offsets, + 31)
+	STA.w !bg_mask+0
+	STA.w !bg_mask+2
+	STZ.w !bg_mask+4               ; (the high bits gathered)
+	STZ.w !bp_i
+	LDX.w !bp_base                 ; (X: the write pointer)
+.index
+	LDY.w #$0000                   ; (chain * 2)
+.chain
+	CPY.w !bp_n
+	BCS .indexDone
+	LDA.w !bp_x,Y
+	CLC : ADC.w !bg_mask+0         ; x + 31
+	CMP.w #287
+	BCS .next
+	STA.w !bg_mask+6
+	LDA.w !bp_y,Y
+	CLC : ADC.w !bg_mask+2         ; y + 31
+	CMP.w #255
+	BCS .next
+	CMP.w !bc_tmp
+	BCC .next
+	SBC.w #31                      ; y (carry set)
+	SEP #$20
+	STA.w $0001,X
+	REP #$20
+	LDA.w !bg_mask+6
+	SEC : SBC.w #31                ; x
+	SEP #$20
+	STA.w $0000,X
+	XBA                            ; (x's high byte: $FF below 0, x bit 8)
+	LSR
+	ROR.w !bg_mask+4               ; (x bit 8, then large, in from the top)
+	SEC
+	ROR.w !bg_mask+4
+	REP #$20
+	LDA.w !bp_tile,Y
+	STA.w $0002,X
+	TXA
+	CLC : ADC.w #4
+	TAX
+	AND.w #$000C
+	BNE .next
+	PHX                            ; (four entries: their byte)
+	LDX.w !bp_hib
+	SEP #$20
+	LDA.w !bg_mask+4
+	STA.w $0000,X
+	REP #$20
+	INX
+	STX.w !bp_hib
+	PLX
+.next
+	INY : INY
+	BRA .chain
+.indexDone
+	TXA                            ; the run's length after this index
+	SEC : SBC.w !bp_base
+	PHX
+	LDX.w !bp_ptr
+	STA.w $0000,X
+	INX : INX
+	STX.w !bp_ptr
+	PLX
+	LDA.w !bg_mask+0 : CLC : ADC.w !bp_dx : STA.w !bg_mask+0
+	LDA.w !bg_mask+2 : CLC : ADC.w !bp_dy : STA.w !bg_mask+2
+	INC.w !bp_i
+	LDA.w !bp_i
+	CMP.w !bg_ct
+	BCS +
+	JMP .index
++	TXA                            ; the last partial group of high bits, its
+	SEC : SBC.w !bp_base           ; entries down to the byte's low pairs
+	STA.w !bg_mask+6               ; (the run's bytes)
+	AND.w #$000C
+	BEQ .bytes
+	LSR : LSR
+	TAY                            ; (its entries: 1-3)
+	SEP #$20
+	LDA.w !bg_mask+4
+-	LSR : LSR
+	INY
+	CPY.w #4
+	BCC -
+	LDX.w !bp_hib
+	STA.w $0000,X
+	REP #$20
+.bytes
+	LDX.w !bg_tmp+14               ; its bytes and the signature
+	LDA.w !bg_mask+6
+	STA.w !BC_BYTES,X
+	TXA
+	ASL : ASL : ASL
+	TAX
+	LDY.w #$0000
+-	LDA.w !bc_sig,Y
+	STA.w !BC_SIG,X
+	INX : INX
+	INY : INY
+	CPY.w #16
+	BCC -
+	LDX.w !bg_tmp+14
+	RTS
+
+if defined("BEAM_RUN_CHECK")
+; The check build (-DBEAM_RUN_CHECK): each run made by beam_run is made
+; again by the old loop (beam.asm) and the two compared (their bytes,
+; lengths, entries and high-table bytes): rb_checks counts them, rb_diff
+; those that differ.
+beam_run_mid_far:
+	JSR beam_run_sums
+	STA.w !rb_sum
+	STY.w !rb_xor
+	LDX.w !bg_tmp+14
+	RTL
+beam_run_end_far:
+	INC.w !rb_checks
+	JSR beam_run_sums
+	CMP.w !rb_sum
+	BNE +
+	CPY.w !rb_xor
+	BEQ ++
++	INC.w !rb_diff
+++	LDX.w !bg_tmp+14
+	RTL
+endif
+
 if defined("BEAM_PREP_CHECK")
 ; The check build (-DBEAM_PREP_CHECK): a run built from the kept chains is
 ; built again from chains prepared afresh, and the two runs compared (their
@@ -125,6 +290,8 @@ beam_check_end:
 +	INC.w !bk_diff
 ++	LDX.w !bg_tmp+14
 	RTS
+endif
+if defined("BEAM_PREP_CHECK") || defined("BEAM_RUN_CHECK")
 ; A16 = the sum, Y16 = the exclusive or of group bg_tmp+14's run: its
 ; bytes, its 12 lengths, its entries' words, its 16 high-table bytes.
 beam_run_sums:

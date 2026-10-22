@@ -33,6 +33,7 @@ beam_init:
 	LDA.w #$FFFF
 	STA.w !bw_key
 	STA.w !bw_key+2
+	STA.w !bp_first
 	LDX.w #10
 -	STA.w !bs_have,X
 	DEX : DEX
@@ -55,6 +56,10 @@ if defined("BEAM_PREP_CHECK")
 	STZ.w !bk_force
 	STZ.w !bk_checks
 	STZ.w !bk_diff
+endif
+if defined("BEAM_RUN_CHECK")
+	STZ.w !rb_checks
+	STZ.w !rb_diff
 endif
 	STZ.w !bc_wait
 	STZ.w !bc_wait+2
@@ -751,7 +756,10 @@ beam_draw:
 +	STX.w !bg_tmp+14
 	JSR beam_signature
 	BEQ .copy
-	JSR beam_defer
+	LDA.w !bc_sig+12               ; (no picture it can show yet: its first
+	BNE +                          ; frames)
+	JMP beam_first
++	JSR beam_defer
 	BCS .copy
 	JSR beam_build_run
 if defined("BEAM_PREP_CHECK")
@@ -781,16 +789,14 @@ beam_defer:
 	EOR.w #$FFFF
 	AND.w !BC_SIG+12,X
 	BNE .now0
-	LDY.w #$0000                   ; every other word equal
--	LDA.w !bc_sig,Y
-	CMP.w !BC_SIG,X
-	BEQ +
-	CPY.w #12
-	BNE .now0
-+	INX : INX
-	INY : INY
-	CPY.w #16
-	BCC -
+	; every other word equal
+	LDA.w !bc_sig+0 : CMP.w !BC_SIG+0,X : BNE .now0
+	LDA.w !bc_sig+2 : CMP.w !BC_SIG+2,X : BNE .now0
+	LDA.w !bc_sig+4 : CMP.w !BC_SIG+4,X : BNE .now0
+	LDA.w !bc_sig+6 : CMP.w !BC_SIG+6,X : BNE .now0
+	LDA.w !bc_sig+8 : CMP.w !BC_SIG+8,X : BNE .now0
+	LDA.w !bc_sig+10 : CMP.w !BC_SIG+10,X : BNE .now0
+	LDA.w !bc_sig+14 : CMP.w !BC_SIG+14,X : BNE .now0
 	BRA +
 .now0
 	JMP .now
@@ -856,27 +862,67 @@ beam_signature:
 	LDA.w !bw_y,X    : STA.w !bc_sig+6
 	LDA.w !bw_flip,X : STA.w !bc_sig+8
 	LDA.w !bw_pal,X  : STA.w !bc_sig+10
-	; which of the group's slots hold a picture it can show
-	TXA
-	LSR
-	STA.w !bc_tmp
-	ASL
-	CLC : ADC.w !bc_tmp
-	ASL
-	TAY
+	; which of the group's slots hold a picture it can show (beam_usable's
+	; tests inline: the class and laser bits, and for chains 1-2 the
+	; slot's radius below the wanted one + 5)
+	LDA.w !bw_key,X
+	AND.w #$003F
+	CLC : ADC.w #5
+	STA.w !bc_tmp                  ; (the outer chains' radius bound)
 	STZ.w !bc_sig+12
-	JSR beam_usable
-	BCC +
-	LDA.w #1 : TSB.w !bc_sig+12
-+	INY : INY
-	JSR beam_usable
-	BCC +
+	TXA
+	STA.w !bc_sig+14               ; (scratch)
+	ASL
+	CLC : ADC.w !bc_sig+14
+	TAY                            ; chain 0's slot * 2: group * 2 * 3
+	CPY.w !bp_first                ; (beam_first's chain 0: there next frame)
+	BEQ ++
+	LDA.w !bs_have,Y
+	BMI +                          ; (none, or an aura's picture)
+	EOR.w !bw_key,X
+	AND.w #$01C0|!BK_LASER
+	BNE +
+++	INC.w !bc_sig+12               ; (chain 0)
++	LDA.w !bs_have+2,Y             ; chains +-1
+	BMI +
+	EOR.w !bw_key,X
+	AND.w #$01C0|!BK_LASER
+	BNE +
+	LDA.w !bs_have+2,Y
+	AND.w #$003F
+	CMP.w !bc_tmp
+	BCS +
 	LDA.w #2 : TSB.w !bc_sig+12
-+	INY : INY
-	JSR beam_usable
-	BCC +
++	LDA.w !bs_have+4,Y             ; chains +-2
+	BMI +
+	EOR.w !bw_key,X
+	AND.w #$01C0|!BK_LASER
+	BNE +
+	LDA.w !bs_have+4,Y
+	AND.w #$003F
+	CMP.w !bc_tmp
+	BCS +
 	LDA.w #4 : TSB.w !bc_sig+12
-+	; below a band layer (bw_ymin): only the run's own length is built,
++
+if defined("ORBIT_BEAMS_BOTH_WIDE") == 0
+	; the fight: Frieza's beam (group 1) keeps to chain 0 while Goku's wave
+	; wants its outer chains (both at full width, with the impacts' bursts,
+	; Goku and Frieza, pass the PPU's 34 slivers on many lines)
+	CPX.w #$0002
+	BNE +
+	LDA.w !fn_phase
+	BNE +
+	LDA.w !bw_key                  ; (the wave on, its chains each side)
+	CMP.w #$FFFF
+	BEQ +
+	LDA.w !bw_j
+	BEQ +
+	LDA.w !bc_sig+12
+	AND.w #$0001
+	STA.w !bc_sig+12
++
+endif
+	; below a band layer (bw_ymin): only the run's own length is built,
 	; so the length joins the signature
 	LDA.w !bw_ymin,X
 	BEQ +
@@ -885,17 +931,18 @@ beam_signature:
 	ORA.w !bw_ymin,X
 +	STA.w !bc_sig+14
 	; compare (group * 8 words)
+beam_sig_cmp:                      ; (X16 = group: Z set when the cached run's)
 	TXA
 	ASL : ASL : ASL
 	TAX
-	LDY.w #$0000
--	LDA.w !bc_sig,Y
-	CMP.w !BC_SIG,X
-	BNE .differ
-	INX : INX
-	INY : INY
-	CPY.w #16
-	BCC -
+	LDA.w !bc_sig+0 : CMP.w !BC_SIG+0,X : BNE .differ
+	LDA.w !bc_sig+2 : CMP.w !BC_SIG+2,X : BNE .differ
+	LDA.w !bc_sig+4 : CMP.w !BC_SIG+4,X : BNE .differ
+	LDA.w !bc_sig+6 : CMP.w !BC_SIG+6,X : BNE .differ
+	LDA.w !bc_sig+8 : CMP.w !BC_SIG+8,X : BNE .differ
+	LDA.w !bc_sig+10 : CMP.w !BC_SIG+10,X : BNE .differ
+	LDA.w !bc_sig+12 : CMP.w !BC_SIG+12,X : BNE .differ
+	LDA.w !bc_sig+14 : CMP.w !BC_SIG+14,X : BNE .differ
 	LDA.w #$0000
 	RTS
 .differ
@@ -949,6 +996,9 @@ beam_build_run:
 	STA.w !bp_dy
 +	JSL beam_prep_keep_far         ; (kept for its next build)
 .stepped
+	JSL beam_run_far               ; (its cells: beamrun.asm)
+if defined("BEAM_RUN_CHECK")
+	JSL beam_run_mid_far           ; (the run's sums kept; made again as before)
 	; write pointer: the group's cache
 	TXA
 	XBA : LSR                      ; group * 128 = 256 bytes per group
@@ -1055,8 +1105,13 @@ beam_build_run:
 	INY : INY
 	CPY.w #16
 	BCC -
+	JSL beam_run_end_far           ; (the two compared)
 	RTS
+else
+	RTS
+endif
 
+if defined("BEAM_RUN_CHECK")
 ; (entries in the group * 2 + x bit 8) -> the high-table bits: large, x bit 8.
 beam_hi_bits:
 	db $02,$03, $08,$0C, $20,$30, $80,$C0
@@ -1076,6 +1131,31 @@ beam_hi_store:
 	STZ.w !bg_mask+4
 	STZ.w !bg_mask+6
 	RTS
+endif
+
+; Group bg_tmp+14 has no picture in VRAM yet (its first frames): nothing is
+; drawn. Chain 0's picture comes first in the next vblank (beam_queue), so
+; the run for that frame (chain 0's picture there) is built now, while
+; this frame has time, and kept with that frame's signature: that frame
+; only copies it (the picture as before, its build a frame early).
+beam_first:
+	LDA.w #$0001
+	TSB.w !bc_sig+12               ; (chain 0's picture there)
+	LDX.w !bg_tmp+14
+	JSR beam_sig_cmp
+	BEQ .done                      ; (built already)
+	JSR orbit_vcount
+	CMP.w #!BEAM_FIRST_LATE
+	BCS .done                      ; (no time now: that frame builds it)
+	LDA.w !bg_tmp+14               ; chain 0's slot * 2: group * 2 * 3
+	ASL
+	CLC : ADC.w !bg_tmp+14
+	STA.w !bp_first
+	JSR beam_build_run
+	LDA.w #$FFFF
+	STA.w !bp_first
+.done
+	RTS
 
 ; Carry set when slot Y / 2 holds a picture group X can show: of its
 ; class (and laser or not) and, beside chain 0, its radius at most 4 over
@@ -1084,6 +1164,8 @@ beam_hi_store:
 ; still on their way) would paint whole cells outside it, so that chain
 ; waits; chain 0 shows a wider core meanwhile. Keeps X and Y.
 beam_usable:
+	CPY.w !bp_first                ; (beam_first's chain 0: there next frame)
+	BEQ .yes
 	LDA.w !bs_have,Y
 	BMI .no                        ; (none, or an aura's picture: aura.asm)
 	EOR.w !bw_key,X

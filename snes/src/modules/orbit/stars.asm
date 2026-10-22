@@ -655,37 +655,7 @@ stars_limits:
 	AND.w #$00FF
 	BNE +
 	RTS
-+	JSR stars_limits_free
-	; the beams' slivers into the rows (then the bodies' and the limits)
-	LDY.w #$0000
-.sum
-	SEP #$20
-	LDA.w !sc_sig,Y
-	BEQ .sumNext
-	STA.w !s_tmp+0
-	REP #$20
-	LDA.w !sc_sig+1,Y
-	AND.w #$00FF
-	TAX
-	SEP #$20
--	LDA.w !sc_k,X
-	CMP.b #!SC_FREE
-	BNE +
-	LDA.b #0                       ; (the row's first slivers)
-+	CLC : ADC.w !s_tmp+0
-	STA.w !sc_k,X
-	LDA.b #1
-	STA.w !sc_on
-	TXA
-	CMP.w !sc_sig+2,Y
-	INX
-	BCC -
-.sumNext
-	REP #$20
-	INY : INY : INY : INY
-	CPY.w #8
-	BCC .sum
-	JSL sl_count_far               ; (the distant bodies' rows, then the limits: scline.asm)
++	JSL sl_count_far               ; (the beams' and the distant bodies' slivers on the rows, then the limits: scline.asm)
 	INC.w !s_kgen                  ; (every list rebuilt with them, first)
 	LDA.w #$0001
 	STA.w !sc_hot
@@ -883,15 +853,16 @@ stars_group_rows:
 	CLC : ADC.w !s_tmp+10
 	BRA -
 +	STA.w !s_tmp+10
-	LDA.w !s_tmp+8                 ; (n - 1) Py
+	SEP #$20                       ; (n - 1) Py (n <= 12, Py <= 32: the
+	LDA.w !s_tmp+8                 ; multiplier)
 	DEC
-	TAY
-	LDA.w #0
--	DEY
-	BMI +
-	CLC : ADC.w !s_tmp+12
-	BRA -
-+	CLC : ADC.w !s_tmp+14
+	STA.w $4202
+	LDA.w !s_tmp+12
+	STA.w $4203
+	REP #$20
+	NOP : NOP : NOP
+	LDA.w $4216
+	CLC : ADC.w !s_tmp+14
 	CLC : ADC.w !s_tmp+10
 	STA.w !s_tmp+12                ; Tmax
 	LDA.w !s_tmp+14

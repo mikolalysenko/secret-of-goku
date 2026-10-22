@@ -132,8 +132,7 @@ endmacro
 !g_ybase    = !SB+$014            ; texel row at the disc centre
 !g_top      = !SB+$016            ; first globe line on screen
 !g_bot      = !SB+$018            ; last globe line on screen
-!sb_cnt     = !SB+$01A            ; the distant bodies counted on the rows a beam crosses (bits 0-2: scline.asm)
-!sb_blk     = !SB+$01C            ;   those blocked there (no room: not drawn)
+!sb_blk     = !SB+$01C            ; the distant bodies blocked on the rows a beam crosses (no room: not drawn; bits 0-2: scline.asm)
 !g_cx       = !SB+$01E            ; centre column the window block holds
 !sb_mv      = !SB+$020            ; the distant bodies whose rows changed since the limits were made (scline.asm)
 !sc_ax      = !SB+$022            ;   the frame's travelX (cam_tdx) it has applied
@@ -642,6 +641,8 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !ORBIT_NMI_END = 257               ; the scene's vblank uploads end by this scanline
 !ORBIT_NMI_LATE = 244              ; a vblank of ours starting this late keeps the fixed registers
 !BEAM_LATE = 180                   ; a build that can wait ends by this scanline
+!bp_first  = !BB+$6E               ; beam_first's build: the slot (* 2) whose picture it takes as there ($FFFF none)
+!BEAM_FIRST_LATE = 160             ; beam_first builds only when its group's drawing starts above this scanline
 !BB_END    = !BB+$70
 !BEAM_BUF  = !SB+$1000             ; 512-byte picture buffer ($7000-$71FF)
 
@@ -676,6 +677,10 @@ assert !hc_checks >= !BC_BND+48 && !hc_hold+2 <= !BC_HI, "the yields' check over
 !bk_diff   = !BC_PREP+50
 !bk_s      = !BC_PREP+52
 !bk_x      = !BC_PREP+54
+!rb_checks = !BC_PREP+102          ; (-DBEAM_RUN_CHECK: the runs made both ways and compared, those that
+!rb_diff   = !BC_PREP+104          ;   differ, the first way's sums; group 1's block has 26 bytes spare)
+!rb_sum    = !BC_PREP+106
+!rb_xor    = !BC_PREP+108
 !BC_OAM   = !SB+$1300              ; 2 x 256 bytes: the entries (60 at most)
 assert !BC_PREP+128 <= !BC_OAM, "the beam runs' kept chains run into their entries"
 !t_want = !SB+$DB0                 ; text panel wanted (0: none, !OTXT_*)

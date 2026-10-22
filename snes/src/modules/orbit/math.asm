@@ -129,35 +129,34 @@ orbit_mul88:
 	STX.w !m_t1
 	EOR.w !m_t1
 	STA.w !m_t2                    ; product sign in bit 15
-	TXA
-	JSR orbit_abs
-	CMP.w #$0100
-	BCC .small
-	LDA.w !m_t0                    ; |b| = 256: a itself
-	JSR orbit_abs
-	BRA .sign
-.small
-	STA.w !m_t1
-	LDA.w !m_t0
-	JSR orbit_abs
-	STA.w !m_t3
+	TXA                            ; |b|
+	BPL +
+	EOR.w #$FFFF : INC
++	CMP.w #$0100
+	BCS .whole                     ; (|b| = 256: |a| itself)
 	SEP #$20
-	LDA.w !m_t1
 	STA.w $4202
-	LDA.w !m_t3
-	STA.w $4203
 	REP #$20
-	NOP : NOP : NOP
-	LDA.w $4216
-	XBA : AND.w #$00FF
-	STA.w !m_t0                    ; (lo * b) >> 8
+	LDA.w !m_t0                    ; |a|
+	BPL +
+	EOR.w #$FFFF : INC
++	STA.w !m_t3
 	SEP #$20
+	STA.w $4203                    ; its low byte * |b|
+	NOP : NOP : NOP : NOP
+	LDA.w $4217                    ; (lo * b) >> 8
+	STA.w !m_t0
 	LDA.w !m_t3+1
-	STA.w $4203
+	STA.w $4203                    ; its high byte * |b|
 	REP #$20
-	NOP : NOP : NOP
-	LDA.w $4216
-	CLC : ADC.w !m_t0
+	LDA.w !m_t0
+	AND.w #$00FF
+	CLC : ADC.w $4216
+	BRA .sign
+.whole
+	LDA.w !m_t0
+	BPL .sign
+	EOR.w #$FFFF : INC
 .sign
 	BIT.w !m_t2
 	BPL +

@@ -4,6 +4,110 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: a beam's first run built the frame before it shows (2026-10-22)
+
+- A beam group with no picture in VRAM yet (a beam's first frame, where
+  nothing is drawn) builds the run its next frame will show, when chain
+  0's picture has come in the vblank (`beam_first`, when its drawing
+  starts above line 160). That frame only copies the run; the picture is
+  as before.
+- The `fight`'s 30 Hz run of repeated pictures began on the frame
+  Frieza's beam first showed, where its 22-line build met a limits remake
+  with a cull, the camera's zoom step and his shots' drawing. A frame
+  with two ticks then cost more than a frame holds, so every frame after
+  it was late too until the beams ended.
+- Repeated pictures: the `fight` summed over its 8 frame phases 24
+  instead of 70 (per phase 4 2 4 2 3 2 3 4; the default phase lags 4
+  times instead of 9, and every phase passes, flicker bounds included:
+  Goku, Frieza and the beams lose sliver-lines in 3-6 frames, the bursts
+  in 33-39). The `clash` 22 instead of 24 (no lag at the launches).
+- Frieza's beam keeps to chain 0 while Goku's wave is wide, as before
+  (a0c12e9): 778 sliver-lines a frame through the wave's last frames,
+  main's picture; the browser draws it whole (2,114).
+
+## Orbit: the beams' frames cost less (2026-10-22)
+
+- A beam run's cells are made in the third code area (`beam_run`), about
+  twice as fast as before: each chain's cell from its cell 0's place plus
+  the index's offset, the high-table bits shifted in from the top (no
+  table, no count), the write pointer in X. A twelve-cell build of chain
+  0 takes some 11 lines instead of 22, and 300 bytes leave the orbit's
+  first code bank.
+- `orbit_mul88` (the fight's 8.8 products: the wave's lane, the rays'
+  hits, the dodges' room) in two thirds of the time, with the same
+  products.
+- `beam_signature`'s slot tests inline and its compare unrolled, and
+  `beam_defer`'s compare unrolled: about a line a frame with both
+  beams on.
+- Every run comes out the same: the check build (`-DBEAM_RUN_CHECK`)
+  makes each one both ways and compares them, all equal in the `fight`
+  (14 runs), the `clash` (402), the `montage` (79) and the `death` (82).
+- Repeated pictures: the `fight` over its 8 frame phases 70 instead of 75
+  (per phase 9 9 5 9 10 9 9 10), the `clash` 24 instead of 25.
+
+## Orbit: Frieza's beam keeps to its core while Goku's wave is wide (2026-10-22)
+
+- In the fight, Frieza's beam (beam group 1) shows only chain 0 while
+  Goku's wave is on with chains each side (`beam_signature`). Both beams
+  at full width, with the impacts' bursts, Goku and Frieza, reach 35-45
+  slivers on many lines, and the PPU drops the beams' slivers: once the
+  fight's frames keep their time, Goku, Frieza and the beams lose 855
+  sliver-lines in 12 frames.
+- Main's 30 Hz run hid this: its late frames kept Frieza's outer chains
+  waiting until the wave was gone. The rule makes that the design, so the
+  coming frame-time fixes do not bring the overflow back.
+- His beam widens as soon as the wave narrows to its core. In the `fight`
+  test it shows chain 0 (778 sliver-lines a frame) through the wave's
+  last frames, as main shows it; the browser draws it whole (2,114).
+- Repeated pictures unchanged: the `fight` over its 8 frame phases 75,
+  the `clash` 25. `-DORBIT_BEAMS_BOTH_WIDE` builds without the rule.
+
+## Orbit: a heavier beam culls no rows it already holds (2026-10-22)
+
+- A beam group that gets heavier while on hid the stars on all its rows
+  again. Its rows hold no stars whatever its slivers (since bee91ad), so
+  it now culls only the rows outside those it held, as a moved group
+  does (`sl_hot`). A group on anew still culls all its rows.
+- `fight` (default build, the tests' pads): 4 culls instead of 5 (the one
+  at its frame 212, 8 lines). Repeated pictures as before: the `fight`
+  over its 8 frame phases 76, the `clash` 25.
+
+## Orbit: the heaviest remakes sum the beams' rows faster (2026-10-22)
+
+- When the beam groups' rows are 16 or more together, a remake puts the
+  beams' slivers on the rows as differences (a group's slivers from its
+  top row, less them past its bottom; bit 7 toggled where the rows any
+  group holds begin and past where they end), then sums them down the 28
+  rows unrolled (`sl_beams`): some 440 cycles, where the group-by-group
+  loop costs 29 a row. Fewer rows are still summed group by group.
+- The limits come out the same at every remake of the `fight` and the
+  `clash` (each frame and each row).
+- The heaviest remakes (both beams over the whole screen, where the
+  `fight`'s 30 Hz run of repeated pictures begins) have a stars stage
+  3-4 lines shorter; the light ones 0.1-0.2 lines longer (the choice).
+- Repeated pictures: the `fight` over its 8 frame phases 75, as before;
+  the `clash` 37 (38 before).
+
+## Orbit: the limits' remake costs less (2026-10-21)
+
+- A remake of the stars' row limits starts its rows at $80 (no beam, no
+  body: free once made) instead of the free value, so neither the beams'
+  slivers nor a body's go in with a test per row. The base and the beams'
+  slivers are made with the bodies' in the third code area (`sl_count`),
+  which leaves 60 bytes free in the orbit's first code bank.
+- A body's room on a beam's rows is tested against one threshold; the
+  bodies' count on a beam's rows (`sb_cnt`, without a reader since the
+  bodies stopped waiting for the star lists) goes; a body's rows decode
+  without the stack; the 28 rows' limits are made unrolled; a group's
+  lines take `(n - 1) Py` from the multiplier instead of a loop.
+- The limits come out the same at every remake of the `fight`, and of
+  the `clash` until its fewer repeated pictures shift its later frames.
+  A remake frame's stars stage: 20.7 lines instead of 22.3 in the
+  `fight`, 19.4 instead of 21.2 in the `clash`.
+- Repeated pictures: the `fight` summed over its 8 frame phases
+  (`ORBIT_FIGHT_EXTRA=0..7`) 75 instead of 80 (per phase 9 9 10 9 10 9 9
+  10; phase 4 no longer fails with 13), the `clash` 38 instead of 39.
+
 ## SNES integration: combat round two, harder hits and first frames on the press (2026-10-22)
 
 - Combat (52dfd5b, e4b02b5, 7b48cef, 56b8b8a, 1fa855d, 74ff86e, 33cbf65,

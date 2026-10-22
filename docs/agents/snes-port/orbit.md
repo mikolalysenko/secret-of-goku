@@ -242,9 +242,11 @@ turns off, and those above the band lines go when its band layer comes to
 draw them (the clash: the launch's first frames, drawn with cells, left
 Goku's ray holding the rows from the top through the first struggle, and
 the stars above the globe stayed limited there: 3 of them instead of
-17-20). When a group turns on, gets heavier or moves onto new rows,
-the stars of every depth on those rows are hidden at once (`sl_cull`: y
-= $E0 in the lists), in the frame the limits are made, and the depths'
+17-20). When a group turns on or moves onto new rows, the stars of
+every depth on those rows are hidden at once (`sl_cull`: y = $E0 in the
+lists; a group that only gets heavier hides nothing more, its rows
+holding no stars whatever its slivers), in the frame the limits are
+made, and the depths'
 rebuilds leave them out until the group lets the rows go (before, a row
 kept (34 - 2 - the beams' slivers) / 2 stars, which came back over the
 next 15 frames: Goku's wave blinked 30 stars out and back in the `fight`
@@ -255,9 +257,22 @@ culls too: 898cc07 had dropped its cull (12 lines in each launch's first
 two frames; its rays lose no slivers without it), which left the stars on
 a launch's rows going in two steps 18 and 33 frames after it (the lists'
 rebuilds) and its distant bodies waiting for the lists. In the `fight`
-the cull spares the beams some 300 slivers (530 without it). Frieza's
-finger laser crosses the screen in 7 cells: with its
-hit's bursts, Frieza and Goku its lines pass 34 without any star, so the
+the cull spares the beams some 300 slivers (530 without it). A remake
+starts its rows at $80 (no beam, no body: free once made), so neither the
+beams' slivers nor a body's go in with a test per row; the base and the
+beams' slivers are made with the bodies' in the third code area
+(`scline.asm` `sl_count`), a body's room on a beam's rows is tested
+against one threshold, the 28 rows' limits are made unrolled, and a
+group's lines take (n - 1) Py from the multiplier: a remake frame's stars
+stage is 1.6 lines shorter in the `fight` and 1.8 in the `clash`. When the
+groups' rows are 16 or more together, the beams' slivers go on the rows
+as differences (a group's slivers from its top row, less them past its
+bottom; bit 7 toggled where the rows any group holds begin and past where
+they end), summed down the 28 rows unrolled (`sl_beams`): some 440
+cycles, where the group-by-group loop costs 29 a row; the heaviest
+remakes (both beams over the whole screen) are 3-4 lines shorter.
+Frieza's finger laser crosses the screen in 7 cells: with its hit's
+bursts, Frieza and Goku its lines pass 34 without any star, so the
 laser's cells whose middle lies within 16 pixels of the freshest hit
 (younger than 24 frames) are hidden, the bursts covering the laser there
 (the laser stops a few pixels short of them).
@@ -312,7 +327,15 @@ lines instead of 10.2 for the chains, 336 of the `clash` test's 426
 builds, a build 13.0 lines on average instead of 17.5. The check build
 (`-DBEAM_PREP_CHECK`) builds every such run again from chains prepared
 afresh and compares the two (their bytes, lengths per cell index, entries
-and high-table bytes): all 310 equal in the `clash`. Colours: OBJ palette 4 entries 2-3 (blue: Goku), palette 5
+and high-table bytes): all 310 equal in the `clash`. The run's cells are
+made in the third code area too (`beamrun.asm` `beam_run`), about twice as
+fast as the old loop: each chain's cell from its cell 0's place plus the
+index's offset (no per-cell step of the chains' places), the high-table
+bits shifted in from the top four entries a byte (no table, no count), the
+write pointer kept in X; a twelve-cell build of chain 0 takes some 11
+lines instead of 22. The check build (`-DBEAM_RUN_CHECK`) makes every run
+both ways and compares them: equal in the `fight` (14 runs), the `clash`
+(402), the `montage` (79) and the `death` (82). Colours: OBJ palette 4 entries 2-3 (blue: Goku), palette 5
 entries 1-3 (pink: Frieza's beam, or the laser's two sides and white core),
 rewritten every vblank with the band's colour frame (`(age >> 2) & 1`).
 Differences: no flare over the first 24 px (the origin's charge orb covers
@@ -611,7 +634,25 @@ than 4 pixels wider than its band waits for its own (whole cells would show
 outside the band); chain 0 shows a wider core meanwhile. A rebuild of a
 group's cached OAM run that only adds chains waits for a frame with time
 (`beam_defer`: a cell costs about 1.2 lines, a whole five-chain run some 75;
-after 8 frames it may end by line 200).
+after 8 frames it may end by line 200). A group with no picture in VRAM
+yet (a beam's first frame: nothing drawn) builds the run its next frame
+will show, when chain 0's picture has come in the vblank (`beam_first`,
+when its drawing starts above line 160): that frame only copies it. The
+`fight`'s 30 Hz run of repeated pictures began on the frame Frieza's beam
+first showed, where its 22-line build met a limits remake with a cull, the
+camera's zoom step and his shots' drawing; a frame with two ticks then
+cost more than a frame holds, so every frame after it was late too until
+the beams ended. In the fight, Frieza's beam (group
+1) keeps to chain 0 while Goku's wave is on with chains each side
+(`beam_signature`): the two at full width, with the impacts' bursts, Goku
+and Frieza, reach 35-45 slivers on many lines, and the PPU took the
+beams' (Goku, Frieza and the beams lost 855 sliver-lines in 12 frames of
+the `fight` once its frames kept their time). Main's 30 Hz run had hidden
+this: its late frames left Frieza's outer chains waiting until the wave
+was gone. His beam widens as soon as the wave narrows to its core; in the
+`fight` test it shows chain 0 (778 sliver-lines a frame) for the wave's
+last frames, as main showed it, where the browser draws it whole (2,114).
+`-DORBIT_BEAMS_BOTH_WIDE` builds without the rule.
 
 **Victory.** The native commands go through `core_sound_queue` in
 `boss-victory.js` order: `F2`/`F0` stop (and `frieza_orbit_won`: stage won,
@@ -1024,7 +1065,7 @@ are untouched).
 
 | Range | Use |
 | --- | --- |
-| `$6000-$60FF` | camera, globe and star state (with the distant bodies' applied camera y and travel, their counted, blocked and moved bits, the rows the limits count and as last noted; the beam groups' rows at the last limits, `$609A`; the places' generation, `$60F6`), the shown HDMA set and its band lines |
+| `$6000-$60FF` | camera, globe and star state (with the distant bodies' applied camera y and travel, their blocked and moved bits, the rows the limits count and as last noted; the beam groups' rows at the last limits, `$609A`; the places' generation, `$60F6`), the shown HDMA set and its band lines |
 | `$6100-$67E3` | two globe window blocks (868 bytes each); in the cosmic montage a shot's state and HDMA tables, in its pullback the Death Ball buffers' state |
 | `$67E4-$67FF` | the distant bodies' projection: `N_x`, `N_y` per body (32 bits each), the camera's radius and x it has applied |
 | `$6800-$686F` | two indirect HDMA table sets (M7A, M7D, windows), the first set's BGMODE table |
@@ -1042,9 +1083,9 @@ are untouched).
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-FB8D` | `!CODE_ORBIT`: 30.9 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FBE5`); bindings at `$A7:FC00-FD6E` |
+| Code `$A7:8000-FAF7` | `!CODE_ORBIT`: 30.7 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FB4F`); bindings at `$A7:FC00-FD6E` |
 | Code `$A1:C000-FD99` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload, the distant bodies' projection (`scenery.asm`) (15.4 KiB of 16) |
-| Code `$AB:C000-D4DB` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (5.2 KiB of 16) |
+| Code `$AB:C000-D940` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains and cells (`beamrun.asm`) (6.3 KiB of 16) |
 | Data `$E7:0000-76E1` | stars, asin rows, chord scales, rim tables, palettes (and the victory's: Frieza's death colours, the whiteout's backdrop and band colours), star tiles, heading/step tables, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (29.7 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |
