@@ -488,6 +488,35 @@ for(const [name,mask,stage,earth] of[
     }});
 }
 
+// ---- Elinee's throne room: Spikey Tiger from any earlier stage -------------
+// The throne room (309) through its own door (130) runs 1E7 into Spikey
+// Tiger's arena (310): no exit, the boss only at CF17 stage 5. Retail enters
+// at 3; 0, 1 and 2 are arrivals that skipped the gate, the jailed soldiers or
+// Elinee's first scene. 1E7 sets each retail stage, so all meet a live Spikey;
+// its defeat (1E2) and Elinee's surrender (1E3 -> 1ED) follow (spikey.lua).
+for(const [name,mask,stage] of[
+  ['spikey-retail-both',3,3],
+  ['spikey-gate-solo',0,0],
+  ['spikey-jail-girl',1,1],
+  ['spikey-elinee-sprite',2,2],
+]){
+  cases.push({name,lua:'spikey.lua',bundle:'power-flight-fixes__native-302',remove:[1,2].filter(m=>!(mask>>(m-1)&1)),
+    writes:[...goku,[0x7ecf17,stage,1],[0x7ecf18,0,1],[0x7ecfd8,0,1],[0x7ecfd9,0,1]],
+    check(r){
+      const t=r.trace.find(x=>x[0]===0x1e7),want=js(0x1e7,mask);
+      return [
+        ['party after REMOVE_CHARACTER',r.party_before?.join()===[1,mask&1,mask>>1&1].join(),`${r.party_before}`],
+        [`from stage ${stage}, the party's throne-room scene (1E7) shows Elinee and loads the arena at stage 5`,!!t&&t[1]===want&&r.scene_stage===stage&&r.elinee_stage>=3&&r.elinee_stage<=4&&r.arena===true&&r.arena_stage===5,
+          `scene from ${r.scene_stage}, Elinee at ${r.elinee_stage}, arena ${r.arena} at ${r.arena_stage}, native ${t?hex(t[1],6):'none'} browser ${hex(want,6)}`],
+        ['Spikey Tiger is created at full HP',r.boss===true&&r.boss_hp?.[0]>0&&r.boss_hp[0]===r.boss_hp[1],`${r.boss_hp}`],
+        ['Spikey Tiger is drawn on the lit screen',r.boss_cells>=4&&r.boss_lit===true,`${r.boss_cells} OAM entries, lit ${r.boss_lit}`],
+        ['Spikey Tiger takes damage',r.boss_hurt===true,`HP ${r.boss_hp_after}`],
+        ['its defeat (1E2) returns Goku to the throne room at stage 6',r.defeated===true&&r.stage_after===6,`stage ${r.stage_after}`],
+        ['Elinee yields (1ED): stage 7, her chests appear',r.yielded===true&&r.flags?.[0x17]===7&&r.flags?.[0xd8]===1&&r.flags?.[0xd9]===1,`CF17 ${r.flags?.[0x17]} CFD8 ${r.flags?.[0xd8]} CFD9 ${r.flags?.[0xd9]}`],
+      ];
+    }});
+}
+
 const only=process.argv.slice(2);
 mkdirSync(out,{recursive:true});
 let failures=0;

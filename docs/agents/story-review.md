@@ -16,7 +16,7 @@ Jema meeting Goku, are genuine scene NPCs and can still appear before joining.
 | --- | --- |
 | Potos and Luka | Villagers blame Goku for Randi and the Sword; Luka explains the Dragon Ball restoration plan. |
 | Goblin pot, event 4E8 | Goku plays along with the threats, avoids breaking the pot and lets Primm rescue him. The native capture/escape choreography is retained. |
-| Pandora, witch and recruitment | Goku learns who Dyluck is from the people involved; he does not assume Primm's relationships. |
+| Pandora, witch and recruitment | Goku learns who Dyluck is from the people involved; he does not assume Primm's relationships. Elinee's throne-room scene (1E7) sets its own stages, so arriving there past an earlier castle scene still leads to a live Spikey Tiger (see [combat](combat.md)). |
 | Dwarf Village quake, event 1BE | After an early breach of the palace wall, the quake still brings out Tropicallo: it sets the fight's stage instead of counting up from the retail one. Popoi's naming and the Elder follow as before (see [combat](combat.md)). |
 | Gnome, Earth and Wind | Solo/partial-party alternatives replace Popoi's servant joke, missing memories and absent Grandpa conversations. Seed rewards and later spell grants remain intact. Every variant keeps the scene's commands. Gnome's scene leads to a live Fire Gigas even when Goku flew over the orb room's gap or breached the palace wall early: the stage room supplies the orb's stage (see [combat](combat.md)). |
 | Flammie | Goku rescues the young dragon while acknowledging he can already fly; the native rescue progresses normally. |
@@ -50,7 +50,7 @@ Use the supported, privately supplied ROM at
 npm run audit:story
 npm test
 npx playwright test tests/browser/cutscenes.spec.mjs tests/browser/goku-ending.spec.mjs
-npx playwright test tests/browser/story-shortcuts.spec.mjs tests/browser/earth-palace.spec.mjs
+npx playwright test tests/browser/story-shortcuts.spec.mjs tests/browser/earth-palace.spec.mjs tests/browser/witch-castle.spec.mjs
 npx playwright test tests/browser/frieza.spec.mjs tests/browser/frieza-crisis.spec.mjs
 ```
 
@@ -70,7 +70,9 @@ Palace check enters the stage room after the orb, over the flown-over orb
 (alone and with each companion) and after an early wall breach, then fights
 Fire Gigas and continues through Gnome's thanks and the Earth seed. It also
 runs the Dwarf Village quake before and after an early breach, fights
-Tropicallo, names Popoi and hears the Elder. The ending checks all
+Tropicallo, names Popoi and hears the Elder. The Witch Castle check enters
+Elinee's throne room in retail order and past each earlier castle stage,
+fights Spikey Tiger and continues to Elinee's surrender. The ending checks all
 four party combinations, Potos's living Randi, wish prerequisites, the farewell on Kai’s planet and checkpoint replay. Bad-route checks cover planet destruction and the absence of a wish.
 
 This is a complete dialogue inventory review with targeted native runtime

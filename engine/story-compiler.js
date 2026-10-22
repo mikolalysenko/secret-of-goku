@@ -97,6 +97,16 @@ export function compileStoryEvent(event,mask,{textOverrides={}}={}){
   if(text<0||end<0)throw Error('Unsupported Earth seed event');
   event={...event,ops:[...event.ops.slice(0,end+1),{op:0x29,bytes:[0x29,0x18]},{op:0,bytes:[0]}]};
  }
+ // Elinee's throne-room scene (1E7) counts CF17 up and down from retail
+ // stage 3: Dyluck flickers out (4/3) and its door enters Spikey Tiger's
+ // arena (310) at 5, the only stage that holds the boss; the arena has no
+ // exit. Set each of those stages instead, so an arrival that skipped an
+ // earlier stage still meets a live Spikey Tiger. Retail values are equal.
+ if(event.id===0x1e7){
+  let stage=3;
+  event={...event,ops:event.ops.map(op=>(op.op===0x29||op.op===0x2a)&&op.bytes[1]===0x17?
+   {...op,op:0x30,bytes:[0x30,0x17,stage+=op.op===0x29?1:-1]}:op)};
+ }
  const chunks=bossReactions[event.id]?[{bytes:box(bossReactions[event.id])}]:[];
  let silent=false,lastSilent=false,selection=false,currentMask=mask;
  // A companion this event recruits (ADD_CHARACTER) is on stage for the whole
