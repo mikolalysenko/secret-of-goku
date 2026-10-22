@@ -47,7 +47,7 @@ if not(defined("TITLE_IDLE_SLOW"))
 	BNE .full
 	LDA $DC
 	CMP.w #!TITLE_MAP
-	BEQ .full
+	BEQ .sword
 	CMP.w !title_last_map&$FFFF
 	BNE .full
 	LDA.w !core_tick&$FFFF
@@ -57,6 +57,42 @@ if not(defined("TITLE_IDLE_SLOW"))
 	INC
 	STA.w !title_last_tick&$FFFF
 	RTL
+.sword
+if not(defined("TITLE_SWORD_IDLE_SLOW"))
+	; Map 128 before the sword event, another uninterrupted frame with
+	; nothing held, queued or shown (no hop or hidden hero, no pool claims,
+	; no pending uploads, no crater): title_arrival_draw would release what
+	; is already released and open and close an empty OAM run. The event
+	; watch (title_arrival_state) and the tick are all that is left. A
+	; redirect this frame (phase 1) draws nothing either.
+	CMP.w !title_last_map&$FFFF
+	BNE .full
+	LDA.w !core_tick&$FFFF
+	DEC
+	CMP.w !title_last_tick&$FFFF
+	BNE .full
+	SEP #$20
+	LDA.w !title_phase&$FFFF     ; !TITLE_PH_PROLOGUE only
+	ORA.w !title_hero_mode&$FFFF
+	ORA.w !title_vram_queued&$FFFF
+	BNE .full8
+	LDA.w !title_claims&$FFFF
+	AND.b #$03
+	BNE .full8
+	LDA.w !title_pod_queued&$FFFF
+	BPL .full8                   ; a pod frame becomes ready
+	LDA.l !persist_title_arrival
+	AND.b #$02
+	BNE .full8                   ; the crater and the resting pod
+	REP #$20
+	JSR title_arrival_state
+	REP #$30
+	LDA.w !core_tick&$FFFF
+	STA.w !title_last_tick&$FFFF
+	RTL
+.full8
+	REP #$20
+endif
 .full
 endif
 	JSR title_arrival_state

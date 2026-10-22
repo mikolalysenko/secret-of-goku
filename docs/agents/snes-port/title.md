@@ -199,7 +199,12 @@ after the arrival, an uninterrupted frame on the same map returns after
 recording the tick: the event watch would do nothing and the map change
 already invalidated the cells and released the hero and VRAM pools. That
 frame costs 0.28 rather than 0.83 scanlines (`TITLE_IDLE_SLOW=1` runs the
-full state and draw passes every frame).
+full state and draw passes every frame). On map 128 itself before the sword
+event (phase 0), with no hidden or hopping hero, no pool claims, no pending
+uploads and no crater, the draw pass would only release what is released
+and open and close an empty OAM run: such a frame runs the event watch and
+records the tick, 0.83 instead of 2.92 lines in the sword perf scene
+(`TITLE_SWORD_IDLE_SLOW=1` draws as before).
 
 ### API for other modules
 
