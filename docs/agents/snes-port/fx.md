@@ -110,7 +110,7 @@ field a kind uses.
 | `fx_beam` | A = style \| flags<<8, X/Y = palms, `!fx_dir`, `!fx_a` length, `!fx_b` width, `!fx_c` taper, `!fx_t` beam age | One frame of a beam. C set if dropped (shares the 8 draw entries) |
 | `fx_flash` | A = frames (7 for the transformation) | Gold-white screen flash, as `native-feedback.js` `burst()` |
 | `fx_quake` | A = frames | Native BG quake pulse (`$49 = $E0`), ignored in Mode 7 and when an event owns `$49` |
-| `fx_kick` | A = facing \| blow << 8 (0 jab, 1 cross, 2 kick) | Camera kick: BG1/BG2 move along the blow by `native-feedback.js` `KICK_PROFILES` (2 / 3 / 4 px, springing back over 4 / 5 / 6 frames) from the coming vblank; text, HUD and sprites stay; ignored in Mode 7 |
+| `fx_kick` | A = facing \| blow << 8 (0 jab, 1 cross, 2 kick, 3 a killing blow) | Camera kick: BG1/BG2 move along the blow by `fx_kick_steps` (SNES-only, `snes-feel.mjs` `FEEL.kick`: a shake that dies out over 2-6 frames; the browser's `native-feedback.js` `KICK_PROFILES` spring back 2 / 3 / 4 px) from the coming vblank; text, HUD and sprites stay; ignored in Mode 7 |
 | `fx_warm` | A = blow \| gold << 8, X = facing | Readies a coming punch contact's cells (Impact frames below). A = `!fx_evict` when all were resident, $FFFF when an `FX_PREP` draw brings them in |
 | `fx_kill` | A = handle | Ends a spawned effect (stale handles are ignored) |
 | `fx_kill_all` | – | Ends every spawned effect and the flash/quake (ring opened, map change, combat cancelled). FX also does this itself on a map or mode change |
@@ -603,6 +603,23 @@ found by a search of the 15 cache entries when their hint misses.
   no OAM entry changes. Otherwise its entries (found from its first part's
   tile and attribute) move to the white class's own palette, if one is
   free. Never a shared row: other actors of the species stay coloured.
+- **SNES-only feel (2026-10-21, combat.md).** `fx_kick_steps` holds signed
+  steps per blow, jab, cross, kick and a killing blow (A's blow 3), from
+  `snes/gen/snes-feel.mjs`: a shake that dies out (8, -6, 4, -3, 2, -1 for
+  the kick; six steps at most, so `!fx_kick`'s index stays in its five
+  bits). `fx_flash` takes frames | curve << 8 (`!fx_flash` keeps the curve
+  in its high byte): curve 0 is the transformation's warm ramp, 1 and 2 the
+  finishing kick's and a kill's white impact flash (12, 6, 2 and 18, 9, 4
+  of 31), 3 and 4 the Kamehameha's release and the full Super Saiyan
+  wave's (14, 9, 5, 2 and 24, 18, 12, 8, 4, 2; `fx_flash_amounts` bit 8
+  makes `fx_nmi_math` add blue too). A
+  vblank whose only FX work is the colour math and / or a camera kick takes
+  the light path (`!fx_nmiwork` = `$C000`, set after `!fx_busy` so its bit
+  15 never reads as fx_frame's held-regions mark): the scroll and the four
+  colour-math writes while the line is below 256, without the full path's
+  timing, HDMA and upload set-up. (A first version put `$C000` into the busy
+  word: fx_frame then took its held-regions shortcut and never finished a
+  flash, which stayed on; in `fly-punch` its light vblanks also overran.)
 - **Camera kick.** `fx_kick` keeps the kick's next step (`!fx_kick`: 1 +
   index into `fx_kick_steps` | facing << 5) and makes `!fx_kickd` nonzero
   (1: offset 0) until the next `fx_finish`, which, from that word alone,
@@ -614,7 +631,9 @@ found by a search of the 15 cache entries when their hint misses.
   `!fx_nmiwork` = `$8000`: the vblank then writes only the scroll (after a
   scanline check), not the uploads, HDMA and colour-math path; with other
   work it runs inside that path's time window. No kick is written in a
-  late vblank.
+  late vblank. A blow's kick runs while its `FX_HIT` keeps `!fx_busy` up;
+  a kick with nothing else held (combat's landing thud) sets the busy word
+  itself in `fx_finish` while it runs, so fx_frame keeps advancing it.
 - **Warm-up.** A cold contact used to upload its cells in the contact's
   vblank, which the game's own damage work fills: they slipped two or
   three frames, the starburst's two frames were gone before its cell
@@ -644,6 +663,18 @@ found by a search of the 15 cache entries when their hint misses.
   (four 22.5° lines, then four 67.5°), so `fx_resolve`'s last-cell memo
   resolves each of the five cells once per picture (11 lookups before);
   the lines touch no other part, so the pixels are unchanged.
+- **One-pass shockwave (2026-10-22).** The ring's sixteen parts cost the
+  generic placement about 7 lines a picture, six pictures a kick, in the
+  frames the struck actor's reaction already fills. `snes/gen/fx.mjs`
+  writes `fx/shock.asm`: per picture (`FX_ASM_SHOCK` + k) a routine that
+  checks every part's corner on screen and the OAM's room for all sixteen,
+  then writes the entries with immediate offsets and tile slots (2.8
+  lines). `fx_k_hit` uses it for the field size, behind the natives, with
+  the five cells resident (the record's set-up as before, 7.7 lines; the
+  first picture's 10.8), and the generic placement otherwise. Captures of
+  a base three-hit combo are pixel for pixel the generic path's; a Super
+  Saiyan one differs only where a frame the generic path made late shows
+  its camera kick a frame later. A shockwave frame's fx: 30 lines -> 25.
 - **Held regions.** The first warm-up claims fx's VRAM regions before
   anything is drawn. Until something is (`FX_UNSEEN` in `!fx_wdue`, set at
   init and at every release, cleared by `fx_note_seen`), an idle frame with only
@@ -1034,7 +1065,11 @@ scenes too. A killed enemy becomes a damage-number object at once (species
 `$F9`); its count rises to 3 five to ten frames later. When the enemy sits in
 slot 5, its digits stream into region A. `barrage-kill` holds Y: it kills
 two Rabites, walks to the third (slot 5) and kills it with a leftward
-barrage while more shots fly. On 17b4631, 98 shot sprites (Super Saiyan:
+barrage while more shots fly. Since combat's SNES-only feel (combat.md) it
+stops 20 px earlier (`left:40`). From the old stop, too few shots were in
+flight at the kill: `fxClaimed` was 17 on the merged build against the 20
+it needs, and it is 54 from the new stop (55 on main without the feel).
+On 17b4631, 98 shot sprites (Super Saiyan:
 231) showed its digits; after the fix, none. `ssj-charge` (L+A, then L+Y)
 and `revert-charge` (transform, revert, charge in base form) run with
 Rabites striking Goku and the transformation's kills. `ssj-kill-charge`

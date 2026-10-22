@@ -47,9 +47,9 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 
 | Resource | Use |
 | --- | --- |
-| Code `$A2:8000-$A2:B72F` | `!CODE_COMBAT` (about 14 KiB; asserted below `$A2:F000`) |
-| Code `$A2:F000-$A2:F44A` | `bind.asm`: bindings to optional modules, assembled after every module include |
-| Data `$E2:0000-$E2:0BCC` | `!DATA_COMBAT` (`snes/gen/combat.mjs`): damage, beam damage/width by charge, beam half width 8.8 by charge and wave age (`combat_api_beam`), wave envelope by age, strength and focus tables, launch arcs, lift, radial ease, hand sockets, item names, placeholder cells |
+| Code `$A2:8000-$A2:BF34` | `!CODE_COMBAT` (about 16 KiB; asserted below `$A2:F000`) |
+| Code `$A2:F000-$A2:F557` | `bind.asm`: bindings to optional modules, assembled after every module include |
+| Data `$E2:0000-$E2:10B4` | `!DATA_COMBAT` (`snes/gen/combat.mjs`): damage, beam damage/width by charge, beam half width 8.8 by charge and wave age (`combat_api_beam`), wave envelope by age, strength and focus tables, launch arcs, lift, radial ease, hand sockets, item names, placeholder cells |
 | Core `$A0:F10E-$A0:F123` | The extension lists in `modules.asm` (`modules_combat_targets`, `_damage`, `_receive`), core's bank |
 | WRAM `$7E:D800-$7E:D8FF` | `!RAM_COMBAT` (map in `module.asm`); public fields below |
 | SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records (an impact's `er_aux` holds its impact frame), 9 launch records, 9 sound marks, fx's eviction count per blow and form when the blow's contact cells were last resident (`!cb_warm`, 6 bytes at `$31:7DD8`), four bytes lent to fx for its impact state (`$31:7DDE-7DE1`: `!fx_evict`, `!fx_wdue`, `!fx_kickd`; fx's own block has none to spare), the pad of the last four field vblanks (`!PADH`), destroy_hit arguments, the beam picture, 16 beam pulse timers (per target bit), the virtual target cache and the log of the last 8 virtual hits (`!VT`, `$31:7E34`), `combat_api_beam`'s record (`!cb_beam`), the hold owners (`!cb_inhold`); test builds `$31:7F00-7F23` (`!CBT`) |
@@ -111,19 +111,19 @@ and the full UI suite pass.
 ## Runtime
 
 **Impact feel (2026-10-21).** The browser's `strike()` gained a graded hit
-stop and impact frames; combat ports them frame for frame and fx draws them.
-`combat_hit_stop` (`snes/gen/combat.mjs`, read from `ManaMod.HIT_STOP`)
-gives the contact hold: 5 / 6 / 10 frames for jab / cross / kick, 4 / 5 / 9
-as a Super Saiyan; the launch records' hold pins the struck targets where
+stop and impact frames; combat ports them and fx draws them (the values of
+the hit stop, the camera kick, the flash and the launches are now the
+cartridge's own: SNES-only feel, below). `combat_hit_stop` gives the
+contact hold; the launch records' hold pins the struck targets where
 the blow found them, against their own recoil. `cb_hit_launch` 2 (jab,
-cross) starts a push-back instead of the 56 / 88 px launch when the hit
+cross) starts a push-back instead of the launch when the hit
 does not kill: `COMBAT_SLIDE_BASE` / `_SSJ` px (10 / 14, `ManaMod.SLIDE`)
-over `COMBAT_SLIDE_FRAMES` (6) on the same ease, without lift
-(`combat_slide_*` rows). A launch record keeps its rows' offset in
-`combat_launch_axis`, one block of 13-word rows for the 56 / 88 px launches
-and the two push-backs (`!kb_tab`, `COMBAT_TAB_*`), and its length
-(`!kb_len`, 12 or `COMBAT_SLIDE_FRAMES`), so a frame of a launch costs
-about what it did before push-backs existed. At every contact `cb_strike`
+over `COMBAT_SLIDE_FRAMES` (6) on the same ease, without lift. A launch
+record keeps its rows in `combat_launch_axis`, one block of 13-word rows
+per kind and form (the launch, the push-back, the Kamehameha's blow-away),
+as `!kb_tab` (kind * 26, doubled when read) with its length (`!kb_len`, 12
+or `COMBAT_SLIDE_FRAMES`) from `combat_launch_kinds`, so a frame of a
+launch costs about what it did before push-backs existed. At every contact `cb_strike`
 puts the impact frame in the spark's effect record (`er_aux`,
 `!CB_IMP_*`: the starburst size + 1 by blow, the kick's shockwave at its
 first contact, on a cross's first contact `!CB_IMP_NEXT` (its spark readies
@@ -133,7 +133,9 @@ spawn per contact carries it all. After the contacts it calls `fx_kick`
 (facing | blow << 8);
 the kick also `fx_quake` (3 / 5) and `fx_flash` (3). A ki shot's impact
 carries the smallest starburst. `cb_fx_prep` (from `cb_fx_continuous`'s
-action dispatch for punches, while the age is below 2) asks `fx_warm` for
+action dispatch for punches, while the age is below 2, not in a frame an
+NMI already interrupted or whose logic ran past line 170: a cold record
+costs fx up to 13 lines) asks `fx_warm` for
 the coming contact's cells
 until fx reports them resident, then not again for that blow and form until
 fx's cache has lost a cell (`!fx_evict` against `!cb_warm`): their uploads
@@ -144,6 +146,167 @@ cross's spark brings them in after its hold (fx `FX_IMP_NEXT`): the first
 kick after a connected cross shows the whole shockwave, base form too. The
 goku module draws the lunge ([goku](goku.md)). The cues are unchanged: HIT
 for the jab and cross, KICK for the kick.
+
+**SNES-only by the maintainer's request (2026-10-21).** "make goku's moves
+more powerful and more threatening ... make the combat intensely powerful
+... it should be responsive and impactful": the cartridge's combat feel no
+longer follows `engine/mana-mod.js`. The values live in
+`snes/gen/snes-feel.mjs` (`FEEL`), which `snes/gen/combat.mjs` and
+`snes/gen/fx.mjs` read; damage, HP, rewards and story state are shared and
+unchanged.
+
+| Aspect | Cartridge | Browser |
+| --- | --- | --- |
+| Hit stop, jab / cross / kick | 4 / 8 / 14 (Super Saiyan 3 / 7 / 12): the jab stays snappy | 5 / 6 / 10 (4 / 5 / 9) |
+| A blow that kills a native actor | Goku holds at least 12 (10) frames; the target, its spark and its shake keep the blow's own stop, so it flies while he holds the pose (`!cb_kill`, `!cb_stop`) | the blow's stop |
+| Camera kick (fx `fx_kick_steps`, signed) | a shake along the blow: jab 2, -1; cross 4, -3, 2, -1; kick 8, -6, 4, -3, 2, -1; a kill 11, -8, 6, -4, 2, -1 | 2 / 3 / 4 px springing back |
+| Full-screen flash (white, fx `fx_flash` curves 1-2) | the finishing kick 12, 6, 2; a kill 18, 9, 4 (of 31) | the kick's warm 4, 2, 1 |
+| BG quake | the kick 4 (6), a kill 3 (5) | the kick 3 (5) |
+| Launch over 12 frames | 96 px (136), peak 30 px; the Kamehameha blows targets 148 (196); the transformation's burst 96 (136) | 56 / 88, peak 20; beams as launches |
+| A launched actor landing alive on screen (`FEEL.land`) | a thud: the camera jolts down with the jab's kick (2, -1) unless a kick runs (`cb_bind_land_kick`, from `cb_update_launches` at the arc's end; a push-back never). A killed actor's death effect is gone before its arc ends, so a kill's landing has none | nothing |
+| The Kamehameha's release | a white flash (14, 9, 5, 2; the full Super Saiyan wave 24, 18, 12, 8, 4, 2) and the kill's camera shake along the beam, on top of the quake | the quake |
+| A ki shot's contact | the cross's starburst | the smallest |
+| A punch pressed after the combo buffer opens (age 9, 4) | starts at once | the next frame |
+| A move's first frame (a punch from rest or the next blow, a ki throw from rest, the Kamehameha's release) | in the vblank of the press when there is room for its cell (First frames, below); otherwise a frame later, as the game draws | the frame of the press |
+| The punch's map strike (`destroy_hit`) | a miss's the next step (its native B pulse follows its answer); a connected blow's at the end of a frame of the hold's last six with room for it (`cb_map_late`), else the step after the hold | the strike's frame |
+
+The browser references apply these to the browser's own sources:
+`snes/test/snes-feel.mjs` patches `mana-mod.js` textually (each patch must
+match exactly once) for `snes/test/combat`'s `jsref.mjs`, and the
+`transform` scenario's radial check uses `FEEL.launch[1]`. Every other
+comparison stays exact; all 37 combat cases pass.
+
+Cost: the map strike left the strike's frame, which the game's hit
+processing makes its heaviest (about 20 lines in a grassy field); fx's
+flash takes the light vblank path, and the punch's cell warm-up waits when
+the frame is already late (fx.md). Gameplay misses summed over twelve
+input-phase offsets (the suite's start delayed 0-11 frames), against the
+same twelve on the step-1 build: punch 15 (19), ki 10 (10), fly 5 (5),
+fly-ki 25 (25), fly-punch 23 (22; vblank overruns 1, 3 before), teleport
+54 (54), charge 125 (146; 122 before the release's flash and shake);
+phase 0 is unchanged (charge 13, teleport 3,
+fly-ki 2, fly 1, fly-punch 1, the rest 0). The grass cases fail their own
+grass/aura checks at most offsets on both builds; where they pass (0 and
+1) both are 0.
+
+Tried and left out, by the same sums: a muzzle burst at the palm for every
+ki shot (ki 37 and fly-ki 42 against 10 and 25: each shot's starburst
+churned fx's cache in a held barrage; the game's two-frame palm flash
+stays), a shockwave for a ki shot that kills (ki 23), a starburst on every
+Kamehameha contact pulse (charge +5 to +7; the pulse sparks stay), a
+one-frame base startup for the punch (punch +1 to +3 over six offsets) and
+for the ki throw (ki +5): the startups stay the browser's.
+
+**On main's performance pass (cd59395, 2026-10-22).** The round merged
+onto the performance pass (direct Goku sprite writes, the unrolled contact
+pass) and measured against main without it (in brackets). Gameplay CPU
+misses over offsets 0-9 (`snes/test/gameplay/run.mjs --offsets=...`):
+punch 6 (9), ki 3 (3), fly 1 (1), fly-ki 12 (12), fly-punch 3 (10),
+teleport 22 (23), charge 43 (56), 90 (114) in all. The one vblank overrun
+is the game's own 33-line vblank at fly-punch's last frame on both builds,
+and it moves from offset 4 to 5. Lag frames around a three-hit string in
+the Rabite field over six input phases: base 1 (13), Super Saiyan 3 (9).
+Goku's contact pose comes one frame after the contact's step, with its
+starburst (main: two, or three for a Super Saiyan cross). The first
+picture of a punch or a ki throw from rest comes in the press's vblank (a
+frame later on main), in the waterfall and the Rabite field, base and
+Super Saiyan. The next blow's comes 0 frames after its press in the
+waterfall and 1 in the field (2 and 2 on main). The Kamehameha's
+release shows 0 frames after it in the field (1 on main); in the waterfall
+and for the Super Saiyan wave it is 1, as on main. The forecast probes
+fire 14 times with 14 hits. The perf scenes' p90 and lag frames equal
+main's (sword 58, Sandship 109, battle 51, beast 171/30, Fortress 91,
+flight 112).
+
+**First frames (2026-10-21).** The game reads the pad in vblank and its
+next frame draws the answer, which the screen shows one frame later: a
+press reached the screen a frame after the browser's (measured with exact
+frames from the first picture after the press's latch: B to the first punch
+frame 1, to the contact 3 or 2 in Super Saiyan art; Y to the throw 1 and the
+shot 3 or 2; letting go of the charge to the release 1; the browser 0, 2
+or 1, 0). `combat_field_nmi`, in `modules_field_nmi` before `goku_nmi`,
+compares the pad against the last step's (`!cb_raw`): a vblank without a
+B, Y or L change leaves at once. On one, `cb_forecast` works out from the
+last frame's state, which is final in the module vblank, the move the next
+step will start: B a punch from rest (its combo as `cb_punch` will count
+it) or the next blow when the step reaches the open buffer or the blow's
+end with no contact hold; Y a ki throw from rest with the cooldown over by
+then; L and / or Y let go while charging the Kamehameha's release; nothing
+else changed in the pad, Goku able to act, no lock, recovery, camera
+follow, foreign action, mode, breakable status or map change, and the last
+field frame's steps after its vblank (so the next frame runs one step, on
+this pad). The facing is `cb_aim`'s with nothing newly pressed, else the
+native one. `goku_api_first_cell` gives that move's first cell when it can
+replace the last frame's under that frame's OAM, and `goku_api_preempt_cell`
+makes it goku's pending upload, which `goku_nmi` sends in the same vblank
+when it has its 10 lines. The next frame starts the move as ever and finds
+the cell resident; the gameplay logic is untouched, and a move the next
+frame did not start would show its cell for one frame (none in 15 fired
+forecasts over six probe scripts of 129-620 frames, mashed buttons and
+charges in the waterfall and a crowded Rabite field, base and Super
+Saiyan).
+The first picture now comes in the press's vblank (0) for the punch and
+the ki throw from rest in both scenes and forms, and for the next blow in
+the waterfall; contact and shot frames are unchanged. Room is the limit:
+the game's own vblank work leaves the module NMI 6-19 lines in the Rabite
+field (12 are needed, the forecast's work and the cell), so a part of the
+presses there, the next blow there and, in both scenes, most releases (a
+charging frame's vblank carries the aura's colours) still show a frame
+later, as before. A core hook holding the actor cell streaming in a
+press's vblank would make room in every one (Requests).
+Cost: a vblank without such a change compares the pad (0.11-0.13 lines);
+the aura and the orb requests of every charging and focusing frame clear
+only the request fields they leave unset, inline (`cb_fx_req_clear`'s
+saving and restoring for the others), and `cb_nmi_vblank` waits for the
+joypad read in 16 bits: together about 0.4 lines less in a charging frame.
+Gameplay misses summed over twelve offsets against step 3: punch 15 (15),
+ki 11 (10), fly 5 (5), fly-ki 26 (25), fly-punch 23 (23), teleport 52 (54),
+charge 124 (125), 256 against 257 in all; at phase 0 charge 11 (13), the
+rest unchanged. Computing the forecast at every frame's end instead (with
+a scanline gate so that it ran only in frames with time to spare) found
+the cell for more presses but cost charge 137 and fly 9: the gate itself
+ran in the frames at the edge.
+Every other field frame pays the compare back: `combat_field_frame` hands
+the core its mask without the injection's arithmetic when nothing was
+injected, calls King Kai's charge remarks (`cb_bind_charge_remark`) only
+while charging or beaming (its own test), and `cb_logic_frame` tests
+`!cb_init` before calling `cb_ensure_init`. That is about 0.2 lines a
+frame, and the perf scenes' p90 and lag frames are those from before the
+forecast again (sword 63, Sandship 112, battle 54, beast 174, Fortress 96,
+flight 112; with the compare alone Sandship and battle were a line
+higher). Gameplay misses over the twelve offsets, with the kick's deferred
+map strike below: punch 13, ki 10, fly 5, fly-ki 25, fly-punch 14,
+teleport 54, charge 124, none above the counts from before the forecast.
+
+**The kick's lag frame (2026-10-22).** In a crowded field a three-hit
+string dropped a frame right after the kick's contact in five input
+phases of six. Per-frame profiles (the Rabite field, Super Saiyan):
+that frame carried the struck actor's reaction (the game's logic about
+160-210 lines), the punch's map strike (`destroy_hit`, 36 lines in grass,
+moved there off the strike frame earlier this round) and fx's impact
+frames (the starburst, the struck actor's white palette, the spark and
+the ring's first picture: 20-36 lines). A connected blow's map strike now
+waits for Goku's hold: it runs at the end of a frame in the hold's last
+six (past the ring) whose logic and modules before fx ended by line 150
+and that no NMI interrupted (`cb_map_late`, from the punch's continuous
+draws: no cost in other frames), else in the step after the hold. During
+the hold Goku and his facing stay put, so the strike covers the same
+ground; the grass and barriers react a few frames later, a miss's strike
+and B pulse keep the next step. fx's ring takes a one-pass placement
+(fx.md, Impact frames). Lag frames over six input phases: the Super
+Saiyan string (video frames 30-100) 20 -> 12, the frames around its kick
+7 -> 1; the base string (frames 10-120) 27 -> 10, around its kick 12 ->
+0. What is left falls around the cross's contact and after its hold,
+when its spark brings in the kick's cells (fx's `FX_IMP_NEXT`, up to 20
+lines a frame while two cold cells a frame come in; two full cache scans
+a frame, one of which may find nothing to take). Touching the cells
+already in instead of resolving them, and skipping a frame's further
+scans once one found nothing, gained nothing measurable there (the cells'
+hints mostly name other cells, so the touch searched as well): left out.
+Gameplay misses
+summed over twelve offsets against step 4: fly-punch 14 (23), punch 14
+(15), ki 11 (11), fly 5 (5), fly-ki 26 (26), teleport 52 (52), charge 124
+(124); phase 0 unchanged.
 
 Cost (per-frame logic of `snes/test/gameplay`'s `punch`, the first
 contact in the scene): the first wind-up frame takes fx's VRAM claim and
@@ -494,6 +657,15 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
   with fx keeps it).
 - **core**: a shared field-vblank counter and per-vblank pad history (what
   `C0:C164` provides here) would serve other 60 Hz clients.
+- **core**: first frames (Runtime) need room for Goku's cell in a press's
+  vblank, which the game's actor cell streaming (`C1:950D`, up to 12 lines
+  in its busy phases) often takes in a crowded field. `core_actor_cells`
+  could also hold the streaming when a button a module names changed in
+  this vblank's pad (`$4218` against `!core_pad`, the auto-joypad read is
+  done by then): a word such as `!core_actor_hold_pad` that combat sets in
+  its frame code to B | Y | L while a press could start a move. It costs a
+  pad compare per field vblank and, on a press, the streaming of that
+  vblank (the round robin resumes, as with `!core_actor_hold`).
 - **goku**: the `ring` / `menu` tests drive the ring with native X after a
   Select; with combat (as the browser mod) X opens the controlled
   character's ring through native Y, and Y is ki. Their browser reference

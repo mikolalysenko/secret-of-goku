@@ -60,7 +60,13 @@ cb_hook_logic:
 ; (the browser's 60 Hz clock also while the game's logic lags; at most 4:
 ; menus and doors pause combat anyway).
 cb_logic_frame:
+	SEP #$20                      ; (cb_ensure_init's test, without its call)
+	LDA !cb_init
+	CMP.b #$A5
+	REP #$20
+	BEQ +
 	JSR cb_ensure_init
++
 if defined("COMBAT_TEST")
 	JSR cb_test_mailbox
 endif
@@ -303,13 +309,27 @@ combat_field_frame:
 	; never hide a button combat injects (X routed to native Y while Y is
 	; ki): the core applies a mask to two reads but an injection to one
 	LDA !cb_inj_all
+	BNE .inj
+	LDA !cb_mask                  ; (nothing injected: the mask as it is)
+	TSB.w !core_pad_mask&$FFFF
+	BRA .masked
+.inj
 	EOR.w #$FFFF
 	AND !cb_mask
 	TSB.w !core_pad_mask&$FFFF
 	LDA !cb_inj_all
 	TSB.w !core_pad_inject&$FFFF
+.masked
 	JSR cb_bind_loops
+	SEP #$20                      ; King Kai's charge remarks: a charge or a
+	LDA !cb_charging              ; beam only (cb_bind_charge_remark's own
+	BNE +                         ; test, without its call in other frames)
+	LDA !cb_act
+	CMP.b #!GOKU_K_BEAM
+	BNE ++
++	REP #$20
 	JSR cb_bind_charge_remark
+++	REP #$20
 	; effects: live records, a charge or an action (the aura and orb), or
 	; the beam picture of this frame's last step
 	LDA !cb_fx_mask
@@ -335,11 +355,9 @@ cb_nmi_vblank:
 	PHP
 	REP #$30
 	PHX
-	SEP #$20
--	LDA.l $004212                 ; the auto-joypad read of this vblank
-	AND.b #$01
-	BNE -
-	REP #$20
+-	LDA.l $004212                 ; the auto-joypad read of this vblank (bit 0)
+	LSR
+	BCS -
 	LDA.l $7E0000|!cb_vblanks
 	INC
 	STA.l $7E0000|!cb_vblanks
@@ -354,6 +372,244 @@ cb_nmi_vblank:
 	LDA.b #$FF
 	TRB $EC
 	RTL
+
+;---------------------------------------------------------------------------
+; First frames (SNES-only, by the maintainer's request): the game reads the
+; pad in vblank and shows its answer a frame later; the browser shows it at
+; once. In the vblank of a press, combat_field_nmi works out the move the
+; next frame's step starts from the last frame's state (final then): B a
+; punch from rest, or the next blow once the combo buffer opens; Y a ki
+; throw from rest; L or Y let go while charging, the Kamehameha's release.
+; goku_api_first_cell gives that move's first cell when it can replace the
+; last frame's under its OAM, and goku_nmi sends it in the same vblank. The
+; next frame starts the move as ever, its cell resident. Nothing runs in the
+; frames themselves, and a vblank without a B, Y or L change costs a pad
+; compare. Never a gameplay change: a move the next frame does not start
+; shows that cell for one frame.
+
+; modules_field_nmi, before goku_nmi (M16/X16, DB = $80, D = 0; the field
+; frame complete, the auto-joypad read long done: the game's own vblank
+; work came first).
+combat_field_nmi:
+	LDA.l $004218
+	EOR.l $7E0000|!cb_raw         ; the last step's pad
+	AND.w #!IN_B|!IN_Y|!IN_L
+	BNE .edge
+	RTL
+.edge
+	PHB
+	PEA $7E7E
+	PLB
+	PLB
+	JSR cb_forecast
+	BCC +
+	JSL goku_api_preempt_cell
++	PLB
+	RTL
+
+; C set and A16 = the cell to send when this vblank's pad starts a move
+; whose first cell can be shown now. DB = $7E, M16 X16 in and out.
+cb_forecast:
+	; the last field frame's steps ran after the vblank before it: the next
+	; one runs a single step, on this vblank's pad
+	LDA !cb_vblanks
+	CMP !cb_vb_last
+	BNE .no
+	LDA !cb_raw
+	STA !cb_t0                    ; the last frame's pad
+	LDA.l $004212                 ; the auto-joypad read (done: see above)
+	LSR
+	BCS .no
+	LDA.l $004218
+	AND.w #$FFF0
+	STA !cb_t2                    ; this vblank's
+	EOR !cb_t0
+	STA !cb_t3                    ; what changed
+	; the key: B or Y pressed, nothing else changed; while charging, L
+	; and/or Y let go
+	SEP #$20
+	LDA !cb_charging
+	REP #$20
+	BNE .letgo
+	LDA !cb_t3
+	CMP.w #!IN_B
+	BEQ +
+	CMP.w #!IN_Y
+	BNE .no
++	AND !cb_t2
+	BNE .keyed
+.no8
+	REP #$20
+.no
+	CLC
+	RTS
+.letgo
+	LDA !cb_t3
+	AND.w #$FFFF-!IN_L-!IN_Y
+	BNE .no
+	LDA !cb_t3
+	AND !cb_t2
+	BNE .no
+.keyed
+	; room for this and the cell (goku_nmi sends one with 10 lines left)
+	JSL core_vblank_lines
+	CMP.w #12
+	BCC .no
+	SEP #$20
+	LDA !cb_init
+	CMP.b #$A5
+	BNE .no8
+	LDA !cb_active
+	BEQ .no8
+	LDA !cb_can
+	BEQ .no8
+	LDA !cb_blocked
+	ORA !cb_queued
+	ORA !cb_ext_kind
+	ORA !goku_mode
+	BNE .no8
+	LDA !cb_form
+	CMP !goku_form
+	BNE .no8
+	REP #$20
+	LDA !cb_inlock
+	ORA !cb_recovering
+	BNE .no
+	JSR cb_bind_camera_pending
+	BNE .no
+	LDA $E190
+	AND.w #$6170                  ; breakable statuses: a recovery may take the step
+	BNE .no
+	LDA $DC
+	CMP !cb_map
+	BNE .no
+	; the facing the move takes: cb_aim with nothing newly pressed, else
+	; the native one (cb_facing_from_native)
+	LDA !cb_t0
+	AND.w #!IN_DIRS
+	XBA
+	TAX
+	LDA.l cb_aim_table,X
+	AND.w #$00FF
+	CMP.w #$00FF
+	BNE .face
+	SEP #$20
+	LDA $E010
+	AND.b #$7F
+	BNE +
+	LDA.b #$03
+	BRA .face8
++	CMP.b #$01
+	BNE +
+	LDA.b #$00
+	BRA .face8
++	LDA $E010
+	ASL
+	LDA.b #$01
+	ADC.b #$00                    ; 1 right, 2 left (bit 7)
+.face8
+	REP #$20
+	AND.w #$0003
+.face
+	TAY
+	SEP #$20
+	LDA !cb_charging
+	BEQ +
+	JMP .release
++	LDA !cb_act
+	BEQ .rest
+	CMP.b #!GOKU_K_PUNCH
+	BEQ .blow
+.mno8
+	REP #$20
+.mno
+	CLC
+	RTS
+.blow
+	CMP !goku_act
+	BNE .mno8
+	; the next blow at the next step's age, unless the contact holds it:
+	; once the combo buffer opens, or the blow ends
+	LDA !cb_act_pause
+	BNE .mno8
+	REP #$20
+	LDA !cb_t0
+	AND.w #!IN_B|!IN_Y|!IN_A|!IN_X|!IN_L
+	BNE .mno
+	LDA !cb_t3
+	CMP.w #!IN_B
+	BNE .mno
+	LDA !cb_act_age
+	INC
+	CMP !cb_act_dur
+	BCS .punch
+	STA !cb_t1
+	LDA.w #9
+	LDX.w #4
+	JSR cb_by_super
+	CMP !cb_t1
+	BEQ .punch
+	BCS .mno
+	BRA .punch
+.rest
+	REP #$20
+	LDA !cb_t0
+	AND.w #!IN_B|!IN_Y|!IN_A|!IN_X|!IN_L
+	BNE .none
+	LDA !goku_act
+	AND.w #$00FF
+	BNE .none
+	LDA !cb_t3
+	CMP.w #!IN_B
+	BEQ .punch
+	; the ki throw: the cooldown over at the next step
+	SEP #$20
+	LDA !cb_ki_blk
+	BNE .none8
+	LDA !cb_blast_cd
+	CMP.b #$02
+	BCS .none8
+	REP #$20
+	LDA.w #3
+	BRA .cell
+.punch
+	; cb_punch: combo = frame <= comboUntil ? (combo + 1) % 3 : 0
+	LDA !cb_frame
+	INC
+	SEC
+	SBC !cb_combo_until
+	BEQ .chain
+	BPL .first
+.chain
+	LDA !cb_combo
+	AND.w #$00FF
+	INC
+	CMP.w #$0003
+	BCC .cell
+.first
+	LDA.w #$0000
+	BRA .cell
+.release
+	LDA !cb_act
+	CMP.b #!GOKU_K_CHARGE
+	BNE .none8
+	REP #$20
+	LDA !cb_t0
+	AND.w #!IN_B|!IN_Y|!IN_A|!IN_X|!IN_L
+	CMP.w #!IN_L|!IN_Y
+	BNE .none
+	LDA.w #4
+.cell
+	JSL goku_api_first_cell
+	CMP.w #!GOKU_NONE
+	BEQ .none
+	SEC
+	RTS
+.none8
+	REP #$20
+.none
+	CLC
+	RTS
 
 ; modules_world_frame: focus, transformation and the form in world flight
 ; (mana-mod.js beforeFrame with worldFlight; aerial ki is the world module's).
@@ -894,10 +1150,28 @@ cb_emit_input:
 cb_goku_frame:
 	JSR cb_goku_active
 	BNE .active
+	SEP #$20                      ; (a pending map strike goes with it)
+	LDA.b #$00
+	STA.l !cb_dpend
+	REP #$20
 	JSR cb_cancel_combat_quiet
 	RTS
 .active
-	; an action another module put in !goku_act (teleport) blocks ours; our
+	LDA.l !cb_dpend               ; a punch's map strike: the step after a
+	AND.w #$00FF                  ; miss, after Goku's hold for a connected
+	BEQ +                         ; blow (cb_strike)
+	BIT.w #$0004
+	BEQ .map
+	LDA !cb_act_pause
+	AND.w #$00FF
+	BEQ .map
+	LDA !cb_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_PUNCH
+	BEQ +
+.map
+	JSR cb_punch_map
++	; an action another module put in !goku_act (teleport) blocks ours; our
 	; own kind is still there when an action ended in an earlier catch-up
 	; step of this field frame (cb_publish runs after the last step)
 	SEP #$20
@@ -1213,6 +1487,19 @@ cb_attack_inputs:
 	LDA.b #$01
 	STA !cb_queued
 	REP #$20
+	; SNES-only (the maintainer's request): a press after the buffer opens
+	; (age 9, 4 as a Super Saiyan) starts the next blow at once, not on the
+	; next frame
+	LDA.w #9
+	LDX.w #4
+	JSR cb_by_super
+	CMP !cb_act_age
+	BEQ +
+	BCS .punched
++	SEP #$20
+	STZ !cb_queued
+	REP #$20
+	JSR cb_punch
 	BRA .punched
 .nopunch
 	STZ !cb_held
