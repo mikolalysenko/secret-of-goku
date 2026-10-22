@@ -192,6 +192,61 @@ function test()
   -- A native song upload uses incrementing handshake counters (including
   -- 8A); those are not the optional PCM stream command we counted above.
   emu.removeMemoryCallback(streamWatch,emu.callbackType.write,0x002140,0x002140)
+  if CUSTOM then
+    -- Stops and fades a module queues leave through the core's sound pump
+    -- without the native driver's echo wait (audio_native_simple): at most
+    -- ~3 lines of it, a late echo released by the next frame's poll; never
+    -- the native dispatch (C3:0179). F0 keeps the native song bookkeeping,
+    -- and a cue right after a stop still plays.
+    local simple,dispatched,simpleStart={},0,nil
+    local s1=emu.addMemoryCallback(function()
+      local c=H.r8(0x7E1E00)
+      simpleStart=(c~=1 and c~=2 and c~=0x81) and {cmd=c,clock=emu.getState()['masterClock'],frame=H.frame} or nil
+    end,emu.callbackType.exec,0xC30004,0xC30004)
+    local s2=emu.addMemoryCallback(function()
+      if simpleStart then
+        simpleStart.lines=(emu.getState()['masterClock']-simpleStart.clock)/1364
+        simpleStart.pending=H.r8(AU+0x5B);simpleStart.song=H.r8(0x7E1E05);simpleStart.saved=H.r8(0x7E1E09)
+        simple[#simple+1]=simpleStart;simpleStart=nil
+      end
+    end,emu.callbackType.exec,0xC30197,0xC30197)
+    local s3=emu.addMemoryCallback(function() if simpleStart then dispatched=dispatched+1 end end,emu.callbackType.exec,0xC30179,0xC30179)
+    local function owned(id) local n=0;for v=0,7 do if aram(0xAE)&(1<<v)~=0 and aram(0xFF80+v)==id then n=n+1 end end;return n end
+    -- 80 0y sets the music volume ($84) at once: y times round nine's
+    -- MUSIC_STEP (the operand of the driver's MOV Y,# at $1018).
+    local volume,full=aram(0x84),15*aram(0x1019)
+    cmd(7,0x00);H.wait(3)
+    check('pump_fade_applied',volume>0 and aram(0x84)==0,string.format('%02X -> %02X',volume,aram(0x84)))
+    cmd(7,0x0F);H.wait(3)
+    check('pump_fade_restored',aram(0x84)==full,string.format('%02X, expected %02X',aram(0x84),full))
+    cmd(5,AUDIO_LOOP_CHARGE);H.wait(40)
+    local bed=owned(0xED)
+    cmd(10,0xF2);H.wait(3)
+    check('pump_stop_effects',bed>0 and aram(0xAE)==0 and aram(0xAD)~=0,string.format('bed %d, effect voices %02X, music %02X',bed,aram(0xAE),aram(0xAD)))
+    cmd(6);H.wait(20)
+    local first=#commands
+    cmd(10,0xF2);H.wait(1);cmd(1,AUDIO_SFX_HIT);H.wait(4)
+    check('cue_after_pump_stop',commands[first+1] and commands[first+1].id==0xE7 and owned(0xE7)>0,#commands-first)
+    H.wait(60)
+    local song,tracks=H.r8(0x7E1E05),aram(0xAD)
+    cmd(10,0xF0);H.wait(1)
+    local f0=simple[#simple]
+    check('pump_stop_bookkeeping',f0 and f0.cmd==0xF0 and f0.song==0xFF and f0.saved==song,f0 and string.format('%02X: song %02X saved %02X (was %02X)',f0.cmd,f0.song,f0.saved,song))
+    H.wait(3)
+    check('pump_stop_music',aram(0xAD)==0 and aram(0xAE)==0,string.format('%02X %02X',aram(0xAD),aram(0xAE)))
+    cmd(9)
+    check('pump_song_restored',tracks~=0 and H.waitFor(function() return H.r8(0x7E1E05)==song and aram(0xAD)==tracks end,600),string.format('%02X %02X (%02X)',H.r8(0x7E1E05),aram(0xAD),tracks))
+    emu.removeMemoryCallback(s1,emu.callbackType.exec,0xC30004,0xC30004)
+    emu.removeMemoryCallback(s2,emu.callbackType.exec,0xC30197,0xC30197)
+    emu.removeMemoryCallback(s3,emu.callbackType.exec,0xC30179,0xC30179)
+    local maxLines,late=0,0
+    for _,c in ipairs(simple) do maxLines=math.max(maxLines,c.lines);if c.pending~=0 then late=late+1 end end
+    check('pump_simple_sent',#simple==5,#simple)
+    check('pump_simple_bounded',maxLines<=6,maxLines)
+    check('pump_simple_not_native',dispatched==0,dispatched)
+    check('pump_simple_released',H.r8(AU+0x5B)==0,H.r8(AU+0x5B))
+    H.result('pump_simple',simple);H.result('pump_simple_late',late)
+  end
   local original=H.r8(0x7E1E05)
   cmd(1,AUDIO_SFX_HIT); H.wait(1)
   cmd(3,0x3B)
