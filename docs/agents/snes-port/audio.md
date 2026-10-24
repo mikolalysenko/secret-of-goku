@@ -1,5 +1,89 @@
 # Audio module: native SNES effects and music
 
+## Classic DBZ charge pulse (2026-10-24)
+
+The held charge and L power-up now use a rushing, throbbing ki texture.
+This supersedes round nine's spring activation and mains hum below. It is
+original offline synthesis, not a sample extracted from a Dragon Ball
+cartridge. The browser edition's existing audio is unchanged.
+
+`snes/gen/audio-charge.mjs` builds one 288-sample cycle at 3 kHz: seeded
+noise through a broad 380–880 Hz moving resonance, saturation and a smooth
+amplitude swell. The 96 ms cycle pulses about ten times a second at its
+reference pitch. The existing charge/focus level and rate envelopes still
+control the build-up. All filtering is finished before BRR encoding;
+playback uses one resident DSP voice, with no synthesis, streaming or new
+CPU commands during play.
+
+The separate spring cue and its launch are removed. A charge starts on
+one voice rather than two, and a quick release no longer
+leaves a one-second chirping tail. The native six-tick fade and F2 cleanup
+still stop the bed; tests cover release after 20, 100, 600 and 1,400 ms.
+The separate aura layer and CHARGED shimmer are preserved.
+
+| Permanent bank | Before | Now |
+| --- | ---: | ---: |
+| Charge BRR | 72 bytes | 162 bytes |
+| Spring sequence | 37 bytes | 0 |
+| Bank code | 438 bytes | 415 bytes |
+| Total used / reserved | 2,273 / 2,304 | 2,303 / 2,304 |
+
+The reservation, boot-transfer length, sample-cache floor `$56F1`, echo
+limits and optional-bank size do not grow. The other three resident BRRs
+(aura/rumble, beam, teleport) and the entire optional bank are byte-identical
+to `e78d3c2`. The ROM audit finds 2,217 changed bytes, confined to effect
+pointers, the SPC upload, optional-bank pointer relocation and checksums.
+All 16 modules' 65816 code and the original sound interface are unchanged.
+The old `$7D` gain comparison remains to preserve the SPC cadence for
+unrelated effects: removing it made a teleport frame miss its deadline by
+0.038 scanlines at start offset 2. Restoring it restores that frame. The
+bed launch is inlined and the old level is kept in Y instead of the stack
+to save the required space entirely within the charge-command path.
+
+The bed gain is 236/256 per requested level. Normal and SSJ charge starts
+measure **11.7 / 14.1 LU** over the field song, **12.6 / 15.0 LU** with the
+200 Hz small-speaker filter. Both still meet the existing PC audibility
+targets. The 48 rapid-contact/beam/bed stress mixes have zero clipped
+samples and stay below the **30,000 / 32,768** headroom bound. The music
+volume, release duck and other effect levels are unchanged.
+
+Validation: strict shipping build; all **59 audio unit/SPC tests**; Mesen
+`loads`, `native` and `music`; the 16 preview renders, with zero clipped
+samples. `beds.test.mjs` now checks single-voice onset and prompt release
+instead of requiring the removed spring. Existing loop-predictor,
+immutability, pitch, music-return, overlap and loudness checks still pass.
+
+The full gameplay comparison against `e78d3c2` passes **130/130 cases**
+(13 scenarios, offsets 0–9, 240 frames each). Every case/offset has the
+same missed-frame and lag counts: **81 / 31,200** frames in each build;
+charge accounts for 42 across its ten offsets, focus and transformation
+for zero. All palette, stamina, sprite-overflow, vblank and graphics-DMA
+checks pass. Reproduction: `node snes/test/gameplay/run.mjs
+--offsets=0,1,2,3,4,5,6,7,8,9 --jobs=2`, with `SNES_ROM` and `GAMEPLAY_OUT`
+pointing to each build and its separate output directory.
+
+The audio-frame CPU profiles match exactly in 123 cases. Seven charge
+offsets differ with the SPC handshake phase: the largest mean increase is
+0.000254 scanlines, the largest maximum increase 0.0484 lines (about
+3.1 microseconds), with no additional missed frame. Private results are
+`.local/charge-audio/gameplay-before/`, `gameplay-final/`, `performance.json`,
+`rom-audit.json` and `cadence-audio/`.
+
+The private A/B files are `.local/charge-audio/preview/`. They render the
+cartridges' own SPC/DSP using identical command schedules, without output
+normalization: L focus, base charge, SSJ charge and a quick tap, each alone
+and over the field song. These are cue renders, not gameplay recordings.
+
+```sh
+node snes/test/audio/charge-preview.mjs --before=.local/charge-audio/before.sfc
+```
+
+`focus-music-before.wav` / `focus-music-after.wav` compare the power-up in
+the music mix; `charge-alone-*` isolate its texture. `manifest.json` records
+ROM hashes, voice counts and levels. The old `AUDIO_ACTIVATION=charged`
+audition switch is retired; round nine's commands below describe that
+historical revision.
+
 ## Round nine: louder hits, a sharper ki and the springy activation
 
 This supersedes round eight's contact, ki, ki-contact, charge-start and

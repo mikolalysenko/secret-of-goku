@@ -1,5 +1,5 @@
 // Resident rumble/arc textures (round eight) with round nine's louder mix:
-// crunch contacts, a bright ki shot, a ki contact and the springy charge.
+// crunch contacts, a bright ki shot, a ki contact and a pulsing charge.
 // Historical round-six synthesis stays in audio-custom.mjs for auditions.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -7,21 +7,17 @@ import {resolve,join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {readWav,resample,brrEncode} from './audio-brr.mjs';
 import {assemble} from './audio-spc700.mjs';
-import {RESIDENT,customNativeIds,KI_CONTACT_ID,SPRING_ID} from './audio-resident.mjs';
+import {RESIDENT,customNativeIds,KI_CONTACT_ID} from './audio-resident.mjs';
 import {residentLayout,effectOffset} from './audio-resident-storage.mjs';
-import {DESIGNS8,hum8,rumble8,arc8} from './audio-design8.mjs';
+import {DESIGNS8,rumble8,arc8} from './audio-design8.mjs';
+import {chargePulse,CHARGE_FRAMES,CHARGE_RATE,CHARGE_SCALE} from './audio-charge.mjs';
 export const DESIGN8=Number(process.env.AUDIO_DESIGN??1);
 assert.ok(Number.isInteger(DESIGN8)&&DESIGN8>=0&&DESIGN8<DESIGNS8.length,'AUDIO_DESIGN must be 0, 1 or 2');
-// Round nine's activation candidate: the springy chirps start with the
-// charge bed (default, charge.wav's opening) or replace CHARGED at full.
-export const ACTIVATION=process.env.AUDIO_ACTIVATION??'start';
-assert.ok(['start','charged'].includes(ACTIVATION),'AUDIO_ACTIVATION must be start or charged');
 export const SAMPLE_BASE=0x4DF1,RESERVE=0x900,FLOOR=SAMPLE_BASE+RESERVE;
 export const BED_IDS=[0xED,0xEE];
-// Two empty retail table rows (no event, call literal or sequence uses
-// them; snes/test/audio/audit.mjs) hold the new cues without growing the
-// resident table: ki contact (the IMPACT cue) and the charge's spring.
-export const KI_CONTACT=KI_CONTACT_ID,SPRING=SPRING_ID;
+// An empty retail table row holds the ki contact (the IMPACT cue).
+// The old spring's $7D row is empty again; charging uses just its bed.
+export const KI_CONTACT=KI_CONTACT_ID;
 export const IDS=customNativeIds();
 // Song volume per start/target nibble: $0C instead of the driver's $11
 // lowers every song 3.0 dB (12/17); fades keep their shape.
@@ -30,10 +26,6 @@ export const MUSIC_STEP=0x0C;
 // the driver's fade restores it linearly over 64 steps of 31.5 ms (2.0 s),
 // so the wave's whole body stays over the music as the PC's beam does.
 export const DUCK=0x90,DUCK_STEPS=64;
-// Charge-bed volume per level unit (/256). Round eight used 140; the spring
-// now carries the charge's audible band, so the bass hum gives back 0.8 dB
-// of headroom (it still rises with the charge as before).
-export const HUM_SCALE=128;
 // Driver note bytes: index×15 + length slot; ties use index 12.
 const LENGTH={192:0,144:1,96:2,64:3,72:4,48:5,32:6,36:7,24:8,16:9,12:10,8:11,6:12,4:13,3:14};
 const note=(index,ticks)=>index*15+LENGTH[ticks],tie=ticks=>180+LENGTH[ticks];
@@ -72,12 +64,6 @@ export const MOTION7=[
 ];
 // Ki contact: a falling rumble boom, then the shared crunch, on one voice.
 export const KI_CONTACT_TRACK=[0xD2,0xD0,0xEA,0x31,0xE4,3,0xD6,4,0xF4,note(9,4),0xDD,NOISE_CLOCK,0xDE,note(0,8),0xD3,24,0,tie(24),0xF2];
-// Spring: instrument 3 (≈1.04 kHz, its second partial 7 dB down) climbs 3
-// semitones per 87 ms and drops back, gaplessly (slides on ties), with the
-// song echo: the springy, reverberant opening of the PC's charge.wav (its
-// band sawtooths 1.02→1.18 kHz every 88 ms). Full 0.67 s, fade 0.43 s.
-const chirp=[0xD6,1,0xFD,tie(3),0xD6,6,3,tie(6)];
-export const SPRING_TRACK=[0xE2,0xD2,0x98,0xEA,3,0xE4,7,0xD6,6,3,note(0,6),0xF0,6,...chirp,0xF1,0xD3,45,0,0xF0,4,...chirp,0xF1,0xF2];
 // Compact teleport attack and faded tail, placed in shared sequence holes.
 const teleportOut={id:0xEB,tracks:[[0xD2,0xB8,0xEA,0x33,0xE4,4,0x8E,0xD3,48,0,0xB9,0xF2]]};
 export function resident7Layout(rom,tracks){
@@ -99,26 +85,27 @@ function loop(pcm,start,n,cross,flat=5){
 }
 export function buildResident7(){
  const defs=[
-  // 32 ms hum loop (was 128) from block 0: the same 62.5/93.75/187.5 Hz
-  // mains tones in whole cycles; its -14 dB noise grain becomes further
-  // harmonics of 31.25 Hz. 216 fewer BRR bytes pay for round nine's cues.
-  {name:'charge',rate:4000,frames:128,start:720,cross:128,tune:0x80,octave:3,gain:1.7,attack:0},
+  // Removing the spring and its launch code pays for a 96 ms ki pulse
+  // without growing the permanent reservation or changing other samples.
+  {name:'charge',rate:CHARGE_RATE,frames:CHARGE_FRAMES,tune:0,octave:3,attack:0},
   {name:'aura',rate:6000,frames:768,start:8400,cross:160,tune:0,octave:3,gain:2.5,flatten:16},
   {name:'beam',rate:6000,frames:768,start:1200,cross:160,tune:0xC0,octave:3,gain:2.6,attack:192,attackStart:360},
   {name:'teleport',rate:10000,frames:800,start:400,cross:80,attack:160,tune:0xA0,octave:4,gain:1.65},
  ];
  let at=SAMPLE_BASE;
  const samples=defs.map((d,i)=>{
-  const src=source(d.name,d.rate);let pcm,offset;
-  if(d.oneShot){pcm=src.slice(0,d.frames);offset=-1;for(let j=0;j<64;j++)pcm[pcm.length-1-j]*=j/64;}
-  else {const attack=d.attack??16;pcm=new Float32Array(attack+d.frames);if(d.attack)pcm.set(src.slice(d.attackStart??0,(d.attackStart??0)+attack));pcm.set(loop(src,d.start,d.frames,d.cross,d.flatten),attack);offset=attack/16*9;}
-  // Round nine: the hum loops from its first block (no silent guard block).
-  if(d.name==='charge'){pcm.fill(0);pcm.set(hum8(d.frames,d.rate,DESIGN8),d.attack??16);}
-  else if(d.name==='aura'){pcm.fill(0);pcm.set(rumble8(d.frames,d.rate,DESIGN8),16);}
+  let pcm,offset;
+  if(d.name==='charge'){pcm=chargePulse();offset=0;}
+  else {
+   const src=source(d.name,d.rate);
+   if(d.oneShot){pcm=src.slice(0,d.frames);offset=-1;for(let j=0;j<64;j++)pcm[pcm.length-1-j]*=j/64;}
+   else {const attack=d.attack??16;pcm=new Float32Array(attack+d.frames);if(d.attack)pcm.set(src.slice(d.attackStart??0,(d.attackStart??0)+attack));pcm.set(loop(src,d.start,d.frames,d.cross,d.flatten),attack);offset=attack/16*9;}
+  }
+  if(d.name==='aura'){pcm.fill(0);pcm.set(rumble8(d.frames,d.rate,DESIGN8),16);}
   else if(d.name==='beam'){
    pcm.set(arc8(d.attack,d.rate,DESIGN8,{attack:d.attack}));
    pcm.set(arc8(d.frames,d.rate,DESIGN8),d.attack);
-  }else pcm=pcm.map(v=>Math.tanh(v*d.gain)*.94);
+  }else if(d.name==='teleport')pcm=pcm.map(v=>Math.tanh(v*d.gain)*.94);
   const b=brrEncode(pcm,{resetAt:new Set(offset<0?[0]:[0,offset/9])});b.bytes[b.bytes.length-9]|=offset<0?1:3;
   const result={...d,pcm,bytes:b.bytes,snr:b.snr,addr:at,loop:offset,instrument:0x30+i,adsr:0xE0FF,sha256:hash(b.bytes)};at+=b.bytes.length;return result;
  });
@@ -148,13 +135,12 @@ export function buildResident7(){
   [0xE3,[0xD2,0xC0,0xEA,0x1F,0xE4,2,0xE9,0xC0,0xD3,24,0,0x8F,0xF2]],
   // CHARGED: round nine's bright shimmer (the PC's 0.28 s sparkle), the arc
   // an octave above its wave rate rising seven semitones, with the song echo.
-  // The 'charged' candidate plays the spring at full charge instead.
-  [0xDF,ACTIVATION==='charged'?SPRING_TRACK.map((v,i)=>i===2?0xFF:v):[0xE2,0xD2,0xFF,0xEA,0x32,0xE4,6,0xD6,24,7,0xD3,24,0,note(9,24),0xF2]],
+  [0xDF,[0xE2,0xD2,0xFF,0xEA,0x32,0xE4,6,0xD6,24,7,0xD3,24,0,note(9,24),0xF2]],
   [0xE0,[0xE2,...ins(1,0xC0),0xD3,48,0x80,0x89,0xD3,24,0,0xBC,0xF2]],
   [0xE1,[0xD2,0xC0,0xEA,0x1F,0xE4,3,0xE9,0xC0,0xD3,48,0,0x8C,0xF2]],
   // Round nine: the kick swing moves out of the full shared holes.
   [0xE6,MOTION7.find(m=>m.id===0xE6).tracks[0]],
-  [KI_CONTACT,KI_CONTACT_TRACK],[SPRING,SPRING_TRACK],
+  [KI_CONTACT,KI_CONTACT_TRACK],
  ]);
  const pointers=[],sequences=[];
  for(const [id,seq] of tracks){const pair=new Uint8Array(4);word(pair,0,at);pointers.push({addr:0x2C00+id*4,bytes:pair});sequences.push({id,addr:at,bytes:seq});bank.set(seq,at-SAMPLE_BASE);at+=seq.length;}
@@ -172,7 +158,7 @@ export function buildResident7(){
  assert.equal(swing.bytes[8],0xD6);assert.equal(swing.bytes[11],0xD3);
  assert.equal(blast.bytes[8],0xE7);
  const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/beds.s'),'utf8'),{name:'beds.s',symbols:{CODE_BASE:at,TUNE_PAGE:0x3A00,SWING_TUNE:swing.addr+7,HIT_TUNE:hit.addr+7,BLAST_TUNE:blast.addr+7,BLAST_FORM:blast.addr+9,BLAST_VOLUME:blast.addr+1,SWING_SWEEP:swing.addr+10,SWING_SWELL:swing.addr+12,
-  SPRING,KI_CONTACT,MUSIC_STEP,DUCK,DUCK_STEPS,HUM_SCALE,SPRING_LEVEL:0xE0,SPRING_BED:ACTIVATION==='start'?0xED:0}});
+  KI_CONTACT,MUSIC_STEP,DUCK,DUCK_STEPS,CHARGE_SCALE,CHARGE_PITCH:CHARGE_RATE/1000}});
  const patches=[];let end=at;
  for(const seg of code.segments)if(seg.addr>=SAMPLE_BASE&&seg.addr<FLOOR){assert.ok(seg.addr+seg.bytes.length<=FLOOR,`resident7 needs ${seg.addr+seg.bytes.length-SAMPLE_BASE} bytes`);bank.set(seg.bytes,seg.addr-SAMPLE_BASE);end=Math.max(end,seg.addr+seg.bytes.length);}else{
   if([0x1868,0x18E8].includes(seg.addr)){

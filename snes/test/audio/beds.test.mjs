@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {buildResident7,RESERVE,FLOOR,SPRING,MUSIC_STEP,HUM_SCALE} from '../../gen/audio-resident7.mjs';
+import {buildResident7,RESERVE,FLOOR,MUSIC_STEP} from '../../gen/audio-resident7.mjs';
+import {CHARGE_FRAMES,CHARGE_RATE,CHARGE_SCALE} from '../../gen/audio-charge.mjs';
 import {customEdlCaps} from '../../gen/audio-custom.mjs';
 import {brrDecode} from '../../gen/audio-brr.mjs';
 import {buildSongs} from '../../gen/audio.mjs';
@@ -12,10 +13,10 @@ import {silentSong,fieldEcho} from './cues9.mjs';
 const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
 const bank=buildResident7();
 test('resident samples, code and loop entries fit without changing retail BRRs',async()=>{
- // Round nine: the hum loop is 32 ms (was 128) from its first block, 1,593
-// BRR bytes in all.
- assert.ok(bank.used<=RESERVE);assert.equal(bank.sampleBytes,1593);
- assert.equal(bank.samples.find(s=>s.name==="charge").frames,128);
+ // The longer ki pulse uses the spring's reclaimed space, not more ARAM.
+ assert.equal(RESERVE,0x900);assert.equal(FLOOR,0x56F1);
+ assert.ok(bank.used<=RESERVE);assert.equal(bank.sampleBytes,1683);
+ assert.equal(bank.samples.find(s=>s.name==='charge').frames,CHARGE_FRAMES);
  const songs=await buildSongs(new URL('../../../',import.meta.url).pathname,loadRom());
  for(const c of customEdlCaps(loadRom(),songs,RESERVE))assert.ok(c.end<0xFA00-c.maxEdl*0x800);
  for(const s of bank.samples){
@@ -23,7 +24,7 @@ test('resident samples, code and loop entries fit without changing retail BRRs',
   if(s.loop>=0){
    const again=brrDecode(s.bytes.subarray(s.loop),{p1:once.at(-1),p2:once.at(-2)}).pcm;
    assert.deepEqual(again,once.slice(s.loop/9*16),'BRR loop has no predictor discontinuity');
-   if(['charge','aura'].includes(s.name)){
+   if(s.name==='aura'){
     const body=once.slice(s.loop/9*16),window=Math.floor(s.rate*.02),rms=[];
     for(let i=0;i<body.length;i+=window){let e=0;for(let j=0;j<window;j++)e+=body[(i+j)%body.length]**2;rms.push(Math.sqrt(e/window));}
     const mean=rms.reduce((a,b)=>a+b,0)/rms.length;
@@ -42,7 +43,7 @@ test('sustained beds update without retriggering and stop through the native fad
   h.ms(3000);assert.deepEqual(owned(id),[v],'one uninterrupted sustained voice');
   const before=h.dspReg(v*16);h.nativeCmd(0x81,id,240,136);h.ms(100);
   assert.deepEqual(owned(id),[v]);assert.ok(h.dspReg(v*16)>before);
-  assert.equal(h.dspReg(v*16+2)|(h.dspReg(v*16+3)<<8),136*(id===0xED?4:6));
+  assert.equal(h.dspReg(v*16+2)|(h.dspReg(v*16+3)<<8),136*(id===0xED?CHARGE_RATE/1000:6));
   h.nativeCmd(0x81,id,0,128);h.ms(150);assert.deepEqual(owned(id),[]);assert.equal(h.ram[0xAE],0);
   assert.deepEqual(h.ram.slice(0x4800,FLOOR),start,'bank is immutable during playback');
  }
@@ -57,7 +58,6 @@ test('punch noise cannot retune sampled beds, and stopped beds return both music
  assert.deepEqual(beds.map(v=>h.dspReg(v*16+2)|(h.dspReg(v*16+3)<<8)),pitches);
  h.nativeCmd(0x81,0xED,240,132);h.ms(400);assert.equal(h.dspReg(0x3D),0);
  for(const id of [0xED,0xEE]){h.nativeCmd(0x81,id,0,128);h.ms(160);}
- h.ms(800);// the one-shot spring started with the charge bed ends by itself
  assert.equal(h.ram[0xAE],0);assert.equal(h.dspReg(0x3D),0);
 });
 test('beam dispatch fades both held beds without separate CPU stop commands',{skip:!isResident7(rom)},()=>{
@@ -72,36 +72,22 @@ test('beam dispatch fades both held beds without separate CPU stop commands',{sk
  }
 });
 
-// Round nine: the charge bed's first command starts the springy activation
-// (charge.wav's opening), on its own voice with the song echo, and the start
-// of a Kamehameha sits at least as far over the field song as the PC's.
-test('a charge from rest starts a gapless, echoed spring of rising chirps',{skip:!isRound9(rom)},()=>{
- for(const [level,expect] of [[0x70,true],[0xD0,true],[0xE0,false],[0xF0,false]]){
+test('charging uses one voice from onset and even a quick release leaves no spring tail',{skip:!isResident7(rom)},()=>{
+ for(const level of [0x70,0xD0,0xE0,0xF0])for(const hold of [20,100,600,1400]){
   const h=createApu({rom});h.ms(60);silentSong(h,rom,fieldEcho(rom));
   h.nativeCmd(0x81,0xED,level,120);
-  const freq=[];let owned=false,gap=0,last=-1,echo=0;
-  for(let ms=0;ms<1400;ms++){
-   h.ms(1);
-   for(let v=0;v<8;v++)if((h.ram[0xAE]&(1<<v))&&h.ram[0xFF80+v]===SPRING){
-    owned=true;const env=h.dspReg(v*16+8);
-    if(env)assert.equal(h.dspReg(v*16+4),3,'instrument 3 partials');
-    if(h.dspReg(0x4D)&(1<<v))echo++;if(ms>40&&ms<600&&env<64)gap++;
-    if(env&&ms%4===0&&ms<600)freq.push((h.dspReg(v*16+2)|h.dspReg(v*16+3)<<8)*32000/4096/64);
-    last=ms;
-   }
+  for(let ms=0;ms<hold;ms+=5){
+   h.ms(5);
+   const owned=[...Array(8).keys()].filter(v=>h.ram[0xAE]&(1<<v));
+   assert.equal(owned.length,1,'no second activation voice steals a music part');
+   assert.equal(h.ram[0xFF80+owned[0]],0xED);
+   if(h.dspReg(owned[0]*16+8))assert.equal(h.dspReg(owned[0]*16+4),0x30,'the resident ki pulse');
+   assert.equal(h.dspReg(0x3D),0,'no shared DSP noise or noise-clock changes');
   }
-  assert.equal(owned,expect,`level $${level.toString(16)}`);
-  if(!expect)continue;
-  assert.ok(last>900&&last<1250,`one-shot spring ends ${last} ms`);
-  assert.equal(gap,0,'chirps tie into each other: no key-off gaps');
-  assert.ok(echo>800,'the spring rings through the song echo');
-  const lo=Math.min(...freq),hi=Math.max(...freq);
-  assert.ok(lo>950&&lo<1100&&hi>1150&&hi<1300,`≈1.0–1.2 kHz like charge.wav (${lo.toFixed(0)}–${hi.toFixed(0)})`);
-  // Count resets: a fall of more than a semitone from the running peak.
-  let resets=0,peak=freq[0];
-  for(const f of freq){if(f>peak)peak=f;else if(f<peak/2**(1/12)){resets++;peak=f;}}
-  assert.ok(resets>=5,`repeated rising chirps, not one sweep (${resets})`);
-  assert.ok(h.ram[0xFF80+[...Array(8).keys()].find(v=>h.ram[0xFF80+v]===0xED)]===0xED,'the hum bed continues');
+  h.nativeCmd(0x81,0xED,0,120);h.ms(150);
+  assert.equal(h.ram[0xAE],0,'all charge voices return promptly to the song');
+  h.take();h.ms(100);
+  const {l,r}=h.take();assert.ok([...l,...r].every(v=>v===0),'no lingering chirp or echo');
  }
 });
 test('the activation, SSJ activation and CHARGED sit at least as far over the field song as the PC',{skip:!isRound9(rom)},()=>{
@@ -113,13 +99,13 @@ test('the activation, SSJ activation and CHARGED sit at least as far over the fi
   assert.equal(r.clipped,0);
  }
 });
-test('songs start 3 dB below retail and the hum bed scales by HUM_SCALE',{skip:!isRound9(rom)},()=>{
+test('songs keep their level and the charge bed scales by CHARGE_SCALE',{skip:!isRound9(rom)},()=>{
  const h=createApu({rom});h.ms(60);
  assert.deepEqual([h.ram[0x0DC4],h.ram[0x1019]],[MUSIC_STEP,MUSIC_STEP]);
  assert.equal(MUSIC_STEP*15,0xB4);
  h.nativeCmd(0x81,0xED,0x80,128);h.ms(250);
  const v=Array.from({length:8},(_,v)=>v).find(v=>(h.ram[0xAE]&(1<<v))&&h.ram[0xFF80+v]===0xED);
- assert.ok(Math.abs(h.ram[0xFC11+v*2]-((0x80*HUM_SCALE)>>8))<=1,'native 6-tick fade settles on level × HUM_SCALE');
+ assert.ok(Math.abs(h.ram[0xFC11+v*2]-((0x80*CHARGE_SCALE)>>8))<=1,'native 6-tick fade settles on level × CHARGE_SCALE');
 });
 // The Kamehameha's release ducks the song volume once and the driver's own
 // fade restores it; a CPU/song fade in progress is left alone, port 1 stays

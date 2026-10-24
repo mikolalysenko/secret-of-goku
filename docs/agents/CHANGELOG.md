@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES audio: a pulsing DBZ-style charge (2026-10-24)
+
+- Replaced the held charge/power-up's mains hum and spring chirp with a
+  rushing ki pulse, generated offline and played from resident BRR. The
+  existing volume/pitch build-up remains; releasing charge stops the whole
+  sound promptly. The browser edition is unchanged.
+- The spring's removal pays for the longer loop within the same 2,304-byte
+  bank and removes its extra onset voice. No new streaming, frame work or
+  memory reservation. All gameplay CPU code and other sound samples are
+  byte-identical to the previous build.
+- Strict build, 59 audio unit/SPC tests and Mesen's load, native-effect and
+  music suites pass. The 48 stressed combat mixes and 16 comparison WAVs
+  have no clipping. All 130 gameplay cases pass; each case's missed-frame
+  count matches the baseline (81 / 31,200 frames in both builds).
+  Private A/B previews and reproduction commands are
+  described in [audio.md](snes-port/audio.md#classic-dbz-charge-pulse-2026-10-24).
+
 ## SNES integration: Spikey Tiger's arena guarded, a lighter Frieza in the real orbit hand-off (2026-10-22)
 
 - Spikey Tiger (bf2dcfe; merged in 317f637), in both editions.

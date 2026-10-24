@@ -1,5 +1,21 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Current charge: a resident ki pulse (2026-10-24)
+
+The spring and 32 ms mains hum described in round nine below have been
+replaced by an original 96 ms rushing ki pulse. Its 162-byte BRR uses the
+space reclaimed from the spring sequence and launch code. The same
+2,304-byte permanent reservation now has one byte free; the other BRRs,
+optional bank and music/echo allocation are unchanged. See
+[the charge implementation and checks](audio.md#classic-dbz-charge-pulse-2026-10-24).
+
+`node snes/test/audio/charge-preview.mjs --before=old.sfc` writes the current
+and old cartridge's power-up, charge, SSJ charge and quick-tap cues to
+`.local/charge-audio/preview/`, alone and over the field song. The 16 WAVs
+are unnormalized SPC/DSP renders; their manifest identifies each cartridge
+and records levels and voice counts. The old `AUDIO_ACTIVATION=charged`
+switch and round-nine package below are historical.
+
 ## Round nine: louder in the mix, from the same samples
 
 Round nine adds no new BRR. Its louder contacts, ki contact, ki pew, spring

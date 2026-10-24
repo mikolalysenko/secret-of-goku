@@ -33,11 +33,10 @@ bed_valid:
  MOV A,$B7
  MOV !RATE+X,A
  MOV A,!LEVEL+X
- PUSH A
+ MOV Y,A
  MOV A,$B6
  MOV !LEVEL+X,A
- POP A
- CMP A,#0
+ MOV A,Y                    ; sets Z for the previous level; no stack round trip
  BEQ bed_start
  CALL !bed_find
  BNE bed_found
@@ -47,20 +46,11 @@ bed_start:
  PUSH A
  MOV A,$B5
  PUSH A
- ; The charge bed's first command also starts the one-shot springy
- ; activation on its own voice (round nine; SPRING_BED=0 disables it).
- ; It marks a bed rising from rest: charge, focus, transformation and
- ; departure all start at or below $D0; a bed started at full level is not
- ; an activation and keeps that headroom.
- CMP A,#SPRING_BED
- BNE bed_launch_one
- CMP $B6,#SPRING_LEVEL
- BCS bed_launch_one
- MOV $B5,#SPRING
- CALL !bed_launch
- MOV $B5,#$ED
-bed_launch_one:
- CALL !bed_launch
+ ; The resident ki pulse supplies both onset and sustain on this voice.
+ ; No extra activation cue, pitch modulation or per-tick synthesis.
+ MOV $B6,#$0F
+ MOV $B7,#$88
+ CALL !$0E10
  POP A
  MOV $B5,A
  POP A
@@ -75,7 +65,7 @@ bed_found:
  MOV A,$B6
  BEQ bed_stop
  MOV Y,A
- MOV A,#HUM_SCALE
+ MOV A,#CHARGE_SCALE
  CMP $B5,#$ED
  BEQ bed_scale
  MOV A,#76
@@ -95,11 +85,6 @@ bed_stop:
  MOV $3C+X,A
 bed_return:
  RET
-; Start effect B5 centred, reusing its own voice (as command 02 ee 0F 88).
-bed_launch:
- MOV $B6,#$0F
- MOV $B7,#$88
- JMP !$0E10
 ; Z clear if the native driver still owns this id. X=track, B2=voice bit.
 bed_find:
  MOV Y,#7
@@ -137,7 +122,10 @@ resident_gain:
  BEQ gain_ki                ; ki launch
  CMP A,#KI_CONTACT          ; round nine's IMPACT counts like a contact
  BEQ gain_ki
- CMP A,#SPRING              ; the charge spring has full gain
+ ; Keep the old comparison's cycles for unrelated effects. Removing it
+ ; shifts SPC handshakes enough to add a miss in teleport's phase-2 test.
+ ; Row $7D is empty again; no charge activation calls it.
+ CMP A,#$7D
  BEQ gain_full
  CMP A,#$E5
  BCC gain_old
@@ -227,7 +215,7 @@ pitch_charge:
  POP Y
  POP A
  MOV Y,!RATE
- MOV A,#4
+ MOV A,#CHARGE_PITCH
  BRA pitch_mul
 pitch_aura:
  POP Y
