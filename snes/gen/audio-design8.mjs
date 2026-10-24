@@ -52,9 +52,14 @@ export function arc8(n,rate,design=1,{attack=0}={}){
  });
  return unit(attack?a:seam(a),.87);
 }
-export function teleport8(rate=10000){
+export function teleport8(rate=10000,{seconds=.176,release=.096}={}){
  const w=readWav(readFileSync(new URL('../../assets/audio/dbz/teleport.wav',import.meta.url))),src=resample(w.pcm,w.rate,rate);
- // Preserve the full 830 ms clip. Only the final 8 ms gets an endpoint fade.
- for(let i=0;i<Math.round(rate*.008);i++)src[src.length-1-i]*=i/(rate*.008);
- return src.map(v=>Math.tanh(v*1.65)*.94);
+ // Keep the original Instant Transmission chirr at its original pitch.
+ // Skip the soft lead-in, then cut the recorded room tail. The compact
+ // take uses the same attack; neither take loops or adds DSP echo.
+ const start=Math.round(rate*.012),frames=Math.round(seconds*rate/16)*16,fade=Math.round(rate*release);
+ return Float32Array.from({length:frames},(_,i)=>{
+  const envelope=Math.min(1,i/(rate*.001))*Math.min(1,(frames-1-i)/fade)**2;
+  return Math.tanh((src[start+i]??0)*1.65)*.94*envelope;
+ });
 }

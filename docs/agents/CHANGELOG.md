@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES audio: sharp Instant Transmission and stronger power impacts (2026-10-24)
+
+- Instant Transmission uses the original recording's onset as a short,
+  dry one-shot: roughly 0.1–0.2 seconds instead of 0.8 seconds. Removed
+  the compact loop and long tail; arrival stays quieter than departure.
+- Super Saiyan opens with a falling crack and lands a deeper thump at
+  the gold flash. Both Kamehameha releases have a more audible impact
+  under the existing arc. All reuse the existing voices and samples.
+- Permanent memory stays at 2,304 bytes, with five bytes free. The optional
+  payload falls from 7,884 to 4,176 bytes without changing song/echo
+  allocation. No added main-CPU instructions, runtime synthesis or voices.
+- Strict build, 62 audio tests, native/music/load/prefetch checks and
+  unclipped A/B mixes pass. Gameplay timing matches the baseline in all
+  130 scenario/phase pairs: 81 / 31,200 missed frames in both. Details,
+  test provenance and preview commands are in
+  [audio.md](snes-port/audio.md#sharper-teleport-and-power-impacts-2026-10-24).
+
 ## Combat: power out of petrification with companions present (2026-10-24)
 
 - Fixed Focus recovery in both editions. Petrification removes Goku's

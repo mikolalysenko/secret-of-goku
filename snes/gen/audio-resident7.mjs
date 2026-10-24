@@ -9,7 +9,7 @@ import {readWav,resample,brrEncode} from './audio-brr.mjs';
 import {assemble} from './audio-spc700.mjs';
 import {RESIDENT,customNativeIds,KI_CONTACT_ID} from './audio-resident.mjs';
 import {residentLayout,effectOffset} from './audio-resident-storage.mjs';
-import {DESIGNS8,rumble8,arc8} from './audio-design8.mjs';
+import {DESIGNS8,rumble8,arc8,teleport8} from './audio-design8.mjs';
 import {chargePulse,CHARGE_FRAMES,CHARGE_RATE,CHARGE_SCALE} from './audio-charge.mjs';
 export const DESIGN8=Number(process.env.AUDIO_DESIGN??1);
 assert.ok(Number.isInteger(DESIGN8)&&DESIGN8>=0&&DESIGN8<DESIGNS8.length,'AUDIO_DESIGN must be 0, 1 or 2');
@@ -64,8 +64,9 @@ export const MOTION7=[
 ];
 // Ki contact: a falling rumble boom, then the shared crunch, on one voice.
 export const KI_CONTACT_TRACK=[0xD2,0xD0,0xEA,0x31,0xE4,3,0xD6,4,0xF4,note(9,4),0xDD,NOISE_CLOCK,0xDE,note(0,8),0xD3,24,0,tie(24),0xF2];
-// Compact teleport attack and faded tail, placed in shared sequence holes.
-const teleportOut={id:0xEB,tracks:[[0xD2,0xB8,0xEA,0x33,0xE4,4,0x8E,0xD3,48,0,0xB9,0xF2]]};
+// Dry 96 ms one-shot: return the voice after 16 ticks, without sustaining
+// a repeated slice of the source into an artificial reverberant tail.
+const teleportOut={id:0xEB,tracks:[[0xD2,0xB8,0xEA,0x33,0xE4,4,note(9,16),0xF2]]};
 export function resident7Layout(rom,tracks){
  const retained=RESIDENT.filter(r=>!tracks.has(r.id)).map(r=>[...CONTACTS7,...MOTION7,teleportOut].find(c=>c.id===r.id)??r);
  retained.push({id:0xF0,tracks:[]},CONTACTS7.find(r=>r.id===0xF1));return residentLayout(rom,retained);
@@ -90,12 +91,13 @@ export function buildResident7(){
   {name:'charge',rate:CHARGE_RATE,frames:CHARGE_FRAMES,tune:0,octave:3,attack:0},
   {name:'aura',rate:6000,frames:768,start:8400,cross:160,tune:0,octave:3,gain:2.5,flatten:16},
   {name:'beam',rate:6000,frames:768,start:1200,cross:160,tune:0xC0,octave:3,gain:2.6,attack:192,attackStart:360},
-  {name:'teleport',rate:10000,frames:800,start:400,cross:80,attack:160,tune:0xA0,octave:4,gain:1.65},
+  {name:'teleport',rate:10000,frames:960,oneShot:true,tune:0xA0,octave:4},
  ];
  let at=SAMPLE_BASE;
  const samples=defs.map((d,i)=>{
   let pcm,offset;
   if(d.name==='charge'){pcm=chargePulse();offset=0;}
+  else if(d.name==='teleport'){pcm=teleport8(d.rate,{seconds:d.frames/d.rate,release:.024});offset=-1;}
   else {
    const src=source(d.name,d.rate);
    if(d.oneShot){pcm=src.slice(0,d.frames);offset=-1;for(let j=0;j<64;j++)pcm[pcm.length-1-j]*=j/64;}
@@ -105,7 +107,7 @@ export function buildResident7(){
   else if(d.name==='beam'){
    pcm.set(arc8(d.attack,d.rate,DESIGN8,{attack:d.attack}));
    pcm.set(arc8(d.frames,d.rate,DESIGN8),d.attack);
-  }else if(d.name==='teleport')pcm=pcm.map(v=>Math.tanh(v*d.gain)*.94);
+  }
   const b=brrEncode(pcm,{resetAt:new Set(offset<0?[0]:[0,offset/9])});b.bytes[b.bytes.length-9]|=offset<0?1:3;
   const result={...d,pcm,bytes:b.bytes,snr:b.snr,addr:at,loop:offset,instrument:0x30+i,adsr:0xE0FF,sha256:hash(b.bytes)};at+=b.bytes.length;return result;
  });
@@ -128,7 +130,7 @@ export function buildResident7(){
  const beam=full=>[0xE2,...ins(2,DESIGN8===1?0xE0:0xD0),...(full?[0xE9,0xE5]:[]),0xD6,96,3,0x89,0xD3,12,0,0xBE,0xF2];
  const tracks=new Map([
   [0xEA,beam(false)],[0xF0,beam(true)],
-  [0xEF,[...ins(3,0x72),0x8E,0xD3,48,0,0xB9,0xF2]],
+  [0xEF,[...ins(3,0x72),note(9,16),0xF2]],
   [0xED,[...ins(0),0x87,0xF0,0,0xB4,0xF1]],
   [0xEE,[...ins(1),0x87,0xF0,0,0xB4,0xF1]],
   [0xEC,[...ins(1,0),0xE9,0xC0,0xD3,6,0xA0,0x8F,0xD3,12,0,0xBE,0xF2]], // low sampled shuffle; no shared DSP-noise clock
@@ -136,8 +138,11 @@ export function buildResident7(){
   // CHARGED: round nine's bright shimmer (the PC's 0.28 s sparkle), the arc
   // an octave above its wave rate rising seven semitones, with the song echo.
   [0xDF,[0xE2,0xD2,0xFF,0xEA,0x32,0xE4,6,0xD6,24,7,0xD3,24,0,note(9,24),0xF2]],
-  [0xE0,[0xE2,...ins(1,0xC0),0xD3,48,0x80,0x89,0xD3,24,0,0xBC,0xF2]],
-  [0xE1,[0xD2,0xC0,0xEA,0x1F,0xE4,3,0xE9,0xC0,0xD3,48,0,0x8C,0xF2]],
+  // Transformation: a bright, falling arc crack at the start; the gold
+  // flash's POWER_BURST lands a deeper rumble thump. Each stays on its
+  // existing single voice; the charge/aura beds supply the sustained roar.
+  [0xE0,[0xE2,0xD2,0xF8,0xEA,0x1F,0xE4,4,0xD6,24,0xF4,0xD3,32,0,note(9,48),0xF2]],
+  [0xE1,[...ins(1,0xFF,3),0xD6,18,0xF4,0xD3,32,0,note(9,36),0xF2]],
   // Round nine: the kick swing moves out of the full shared holes.
   [0xE6,MOTION7.find(m=>m.id===0xE6).tracks[0]],
   [KI_CONTACT,KI_CONTACT_TRACK],
@@ -145,11 +150,11 @@ export function buildResident7(){
  const pointers=[],sequences=[];
  for(const [id,seq] of tracks){const pair=new Uint8Array(4);word(pair,0,at);pointers.push({addr:0x2C00+id*4,bytes:pair});sequences.push({id,addr:at,bytes:seq});bank.set(seq,at-SAMPLE_BASE);at+=seq.length;}
  const layout=resident7Layout(readFileSync(join(root,'rom/secret-of-mana-us.sfc')),tracks);
- // A short, deep body under the arc: round eight's sampled finisher thump,
- // now the wave's own second track (round nine's finishers start higher).
- // Both wave voices use the same effect id and return through native F2.
+ // The release thump starts at 8 kHz and drops an octave: an audible
+ // chest hit under the arc instead of the old, mostly sub-bass rumble.
+ // Keep the same two voices, durations and native F2 cleanup.
  for(const [id,volume,ticks] of [[0xEA,0xE0,20],[0xF0,0xF8,22]]){
-  const seq=[0xD2,contactGain(volume),0xEA,0x31,0xE4,1,0xD6,ticks,0xFC,0xD3,ticks,0,0x8F,0xF2];
+  const seq=[0xD2,contactGain(volume),0xEA,0x31,0xE4,3,0xD6,ticks,0xF4,0xD3,ticks,0,0x8F,0xF2];
   word(pointers.find(p=>p.addr===0x2C00+id*4).bytes,2,at);sequences.push({id:null,body:id,addr:at,bytes:seq});bank.set(seq,at-SAMPLE_BASE);at+=seq.length;
  }
  const swing=layout.tracks.find(t=>t.id===0xE5);

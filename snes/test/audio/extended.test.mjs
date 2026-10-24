@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {createApu,StreamPlayer} from './apu.mjs';
 import {extendedInfo,customSegments} from './cartridge.mjs';
 import {brrEncode} from '../../gen/audio-brr.mjs';
+import {silentSong,fieldEcho} from './cues9.mjs';
 const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc'),ext=extendedInfo(rom);
 
 test('idle prefetch writes exact records across pages without changing voices or stream slots',{skip:!ext},()=>{
@@ -39,8 +40,10 @@ test('prefetch opcode leaves rare channel-zero records and release intact',{skip
 
 // Install exactly the ROM descriptor's data and relocated words, as the
 // completed preload does. This exercises full clips, not the compact bank.
-function extendedApu(){
- const h=createApu({rom});h.ms(60);const base=0xA000;
+function extendedApu(extended=true){
+ const h=createApu({rom});h.ms(60);silentSong(h,rom,fieldEcho(rom));
+ if(!extended)return h;
+ const base=0xA000;
  h.ram.set(ext.bytes,base);
  for(let i=0;i<12;i++){
   const a=[0x19C8,0x2FA8,0x2FBC][i>>2]+(i&3)*2;
@@ -49,17 +52,29 @@ function extendedApu(){
  }
  return h;
 }
-test('extended teleport plays the full audible tail and preserves out/in gain',{skip:!ext},()=>{
- const rows=[];
- for(const id of [0xEB,0xEF]){
-  const h=extendedApu();h.take();h.nativeCmd(2,id,15,0x88);h.ms(1200);
-  const {l}=h.take();let last=0,peak=0,tail=0;
-  for(let i=0;i<l.length;i++){peak=Math.max(peak,Math.abs(l[i]));if(Math.abs(l[i])>24)last=i;if(i>32000*.65&&i<32000*.82)tail+=l[i]*l[i];}
-  assert.ok(last/32>760&&last/32<880,`full tail ${last/32} ms`);
-  assert.ok(tail>10000,'tail carries signal');assert.equal(h.ram[0xAE],0);
-  assert.equal(h.dspReg(0x3D),0);rows.push(peak);
+test('both teleports are dry one-shots, return their voice promptly and keep arrival quieter',{skip:!ext},()=>{
+ for(const extended of [false,true]){
+  const rows=[];
+  for(const id of [0xEB,0xEF]){
+   const h=extendedApu(extended);h.take();h.nativeCmd(2,id,15,0x88);
+   let maxVoices=0,lastOwned=0;
+   for(let ms=0;ms<400;ms++){
+    h.ms(1);const mask=h.ram[0xAE];
+    maxVoices=Math.max(maxVoices,mask.toString(2).replaceAll('0','').length);
+    if(mask)lastOwned=ms;
+    assert.equal(h.dspReg(0x4D)&mask,0,'no effect echo, even when the song has echo');
+    assert.equal(h.dspReg(0x3D),0,'no shared DSP noise');
+   }
+   const {l,r}=h.take();let last=0,peak=0;
+   for(const a of [l,r])for(let i=0;i<a.length;i++){peak=Math.max(peak,Math.abs(a[i]));if(Math.abs(a[i])>24)last=Math.max(last,i);}
+   assert.ok(last/32>(extended?150:80)&&last/32<(extended?210:125),`short tail ${last/32} ms`);
+   assert.ok(lastOwned<(extended?260:190),`prompt voice return ${lastOwned} ms`);
+   assert.equal(maxVoices,1);assert.equal(h.ram[0xAE],0);
+   assert.ok(l.slice(32000*.25).every(v=>v===0),'no lingering tail after 250 ms');
+   assert.ok(peak>3000&&peak<16000,'audible transient with overlap headroom');rows.push(peak);
+  }
+  assert.ok(rows[1]/rows[0]>.55&&rows[1]/rows[0]<.70,'teleportIn is quieter');
  }
- assert.ok(rows[1]/rows[0]>.55&&rows[1]/rows[0]<.70,'teleportIn is quieter');
 });
 test('extended arc and SSJ wave remain bounded and return both voices',{skip:!ext},()=>{
  for(const id of [0xEA,0xF0]){

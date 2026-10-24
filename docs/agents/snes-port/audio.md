@@ -1,5 +1,82 @@
 # Audio module: native SNES effects and music
 
+## Sharper teleport and power impacts (2026-10-24)
+
+Instant Transmission now uses the opening chirr of the existing DBZ
+recording at its original pitch, without the long recorded tail or the
+compact version's repeated slice. `teleport8()` skips 12 ms of soft lead-in,
+uses a 1 ms attack and a squared release, and encodes a one-shot BRR:
+96 ms in the permanent bank, 176 ms in the optional bank. The arrival
+retains its quieter `$72` level against the departure's `$B8`. Neither
+sequence enables DSP echo. Field-echo renders become silent by about
+108 / 183 ms, versus roughly 800 / 838 ms before.
+
+The compact native note lasts 16 ticks, the optional note 24; ownership
+returns within 190 / 260 ms. The sample itself ends sooner. A 12-tick
+compact cleanup changed the SPC handshake phase enough to add a single
+0.038-scanline deadline miss in a crowded teleport frame. Using 16 ticks
+preserves the short sound and removes that regression without changing
+the dispatcher or adding CPU work.
+
+Super Saiyan's opening `$E0` is a bright arc crack falling an octave, with
+a short decay. The existing `$E1` cue at the gold flash lands a deeper,
+falling rumble thump. Each uses its original single voice; the existing
+charge and aura beds carry the sustained power-up. The first 80 ms above
+200 Hz gain about 1.6 dB at the opening and 2.2 dB at the flash. Their
+native voice windows shrink to about 470 / 360 ms.
+
+Both Kamehameha releases keep their arc and two-voice arrangement. The
+second voice's rumble now starts at an 8 kHz decoding rate and falls an
+octave, instead of beginning at 2 kHz and falling four semitones. This
+brings the release hit out of sub-bass: its first 80 ms above 200 Hz gain
+about 0.9–1.6 dB. Levels, wave duration and music ducking are unchanged.
+The beam, aura and charge BRRs are byte-identical to `1dabf68`; only the
+teleport samples change. Browser audio is unchanged.
+
+| Budget | Before | Now |
+| --- | ---: | ---: |
+| Permanent used / reserved | 2,303 / 2,304 bytes | 2,299 / 2,304 bytes |
+| Permanent BRR bytes | 1,683 | 1,683 |
+| SPC code bytes in the permanent bank | 415 | 415 |
+| Optional transfer payload | 7,884 bytes (219 records) | 4,176 bytes (116 records) |
+| Optional reservation | 7,936 bytes | 7,936 bytes |
+
+The sample-cache floor `$56F1`, song eligibility and echo allocation stay
+unchanged. The shorter optional payload saves idle transfer work. Audio's
+65816 code differs only in the payload-length immediate; the separate
+petrify fix changes two combat address operands. The other 14 CPU modules
+are byte-identical. No added 65816 instructions, runtime filters or DSP voices.
+
+Validation: strict build, **62 audio unit/SPC tests**, Mesen `loads`,
+`native`, `music` and `prefetch`; 18 transformation mixes across both reveal
+durations, three songs and three phases; existing rapid-contact/beam/bed
+stress mixes; and **28 A/B WAVs**, all with zero clipped samples. Power
+mixes remain below 30,000 / 32,768. The prefetch check sees the same ten
+field misses with transfers enabled or disabled over ten 1,800-frame runs.
+
+Gameplay timing matches `1dabf68`: **81 missed frames / 31,200**, with the
+same count and lag in each of 130 scenario/phase pairs. All hardware checks
+pass. A full 130-case run was followed by rerunning teleport at offsets
+0–9 after its two duration bytes changed; the other 120 cases use neither
+teleport cue. ROM audit confirms those two bytes and checksums are the
+only differences between those passes. A fresh 20-case teleport/transform
+baseline also matches the prior full run's identical ROM hash. No case's
+maximum audio-frame time increases; the largest mean increase is
+0.000387 scanlines (about 0.025 microseconds).
+
+Private evidence is in `.local/it-audio/`: `rom-audit.json`,
+`performance.json`, `gameplay-after/`, `teleport-final/`, `audio-final/`,
+and `preview/`. Generate the unnormalized SPC/DSP cue renders with:
+
+```sh
+node snes/test/audio/power-preview.mjs --before=old.sfc
+```
+
+The preview includes compact/optional teleport pairs, Super Saiyan with
+its beds and gold flash, and both Kamehameha releases, alone and over the
+field song. These are cue renders, not gameplay recordings; the manifest
+records the ROM hashes, levels and maximum voice counts.
+
 ## Classic DBZ charge pulse (2026-10-24)
 
 The held charge and L power-up now use a rushing, throbbing ki texture.

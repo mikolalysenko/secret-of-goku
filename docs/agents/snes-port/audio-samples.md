@@ -1,11 +1,25 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Current teleport and power impacts (2026-10-24)
+
+Instant Transmission is a dry 96 ms compact / 176 ms optional one-shot
+from the original recording's onset, with a quieter arrival and no looped
+tail. The optional transfer shrinks from 7,884 to 4,176 bytes; reservations
+and music/echo eligibility are unchanged. The permanent bank uses 2,299
+of 2,304 bytes. Charge, aura and beam BRRs are unchanged.
+
+Super Saiyan's crack and gold-flash thump, and the Kamehameha's stronger
+release impact, are native sequences over those existing BRRs with the
+same voice counts. See [implementation and checks](audio.md#sharper-teleport-and-power-impacts-2026-10-24).
+`node snes/test/audio/power-preview.mjs --before=old.sfc` writes 28 private
+A/B WAVs and their manifest to `.local/it-audio/preview/`.
+
 ## Current charge: a resident ki pulse (2026-10-24)
 
 The spring and 32 ms mains hum described in round nine below have been
 replaced by an original 96 ms rushing ki pulse. Its 162-byte BRR uses the
 space reclaimed from the spring sequence and launch code. The same
-2,304-byte permanent reservation now has one byte free; the other BRRs,
+2,304-byte permanent reservation then had one byte free; the other BRRs,
 optional bank and music/echo allocation are unchanged. See
 [the charge implementation and checks](audio.md#classic-dbz-charge-pulse-2026-10-24).
 
