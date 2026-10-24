@@ -195,6 +195,16 @@ function screenCompare(js,dir,bundleDir){
 // Cases checked on the cartridge alone (the browser behaviour they follow
 // is pinned by the browser's own tests).
 const CASES={
+  async recovery(){
+    const rom=privateRom(romSrc,'combat-recovery');
+    const test=`IMPORT_ROOT=${JSON.stringify(importRoot)}\n${lib}\n${readFileSync(join(here,'status-recovery.lua'),'utf8')}`;
+    let r;
+    try{r=await runMesen({rom,test,outDir:join(outRoot,'recovery'),state:join(cps,'waterfall.mss')});}
+    finally{cleanupRom(rom);}
+    const failures=[...(r.results?.failures??[]),...(r.results?.error?[r.results.error]:[])];
+    if(r.results?.rows?.length!==6)failures.push('not all six recovery cases finished');
+    return {ok:r.code===0&&!failures.length,failures,ms:r.ms,note:'native status cleanup, solo/party petrification, resistance and expiry'};
+  },
   async icons(){
     const {runIcons}=await import('./icons.mjs');
     return runIcons({romSrc,outRoot,importRoot,cps,state:sourceOf('graphics-audit__party'),lib});

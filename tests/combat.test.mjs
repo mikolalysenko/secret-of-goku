@@ -529,20 +529,33 @@ test('Focus breaks stone, unconsciousness, Frosty, Balloon and burning, with a s
  }
 });
 
+test('Focus breaks petrification with companions present and no assigned player 1',()=>{
+ const {mod,step}=setup();mod.write16(0xe182,700);
+ mod.write8(0xe200,1);mod.write8(0xe400,1);mod.write8(0xe02c,0);
+ // Player 2's companion does not consume player 1's Focus input either.
+ for(const companion of[0,2]){
+  mod.statusRecovery=null;mod.write8(0xe22c,companion);mod.write8(0xe42c,0);
+  mod.write8(0xe190,0x40);step(0x400);
+  assert.equal(mod.read8(0xe190)&0x40,0);assert.ok(mod.statusRecovery?.pending);
+  assert.equal(mod.read8(0xe02c),0,'native cleanup assigns the controller');
+  assert.equal(mod.read8(0xe22c),companion,'other players keep their controllers');
+ }
+});
+
 test('Focus recovery preserves poison, party control, story locks, and actual defeat',()=>{
  const {mod,step}=setup();mod.write16(0xe182,700);mod.write16(0xe184,999);
  mod.write8(0xe190,0x10);mod.write8(0xe191,0x20);step(0x400);
  assert.equal(mod.read8(0xe190),0);assert.equal(mod.read8(0xe191),0x20);assert.equal(mod.read16(0xe182),700);
  mod.statusRecovery=null;mod.write16(0xe190,0x400);step(0x400);
  assert.equal(mod.read16(0xe190),0x400,'Barrel is an item, not the fire stun (Engulf is $E191 bit 6)');assert.equal(mod.statusRecovery,null);
- for(const lock of['event','menu','party','dead']){
+ for(const lock of['event','menu','party1','party2','dead']){
   mod.statusRecovery=null;mod.write8(0xe190,0x40);mod.write8(0xe191,0);mod.write16(0xe182,700);
   if(lock==='event')mod.write8(0xd0,1);
   if(lock==='menu')mod.write8(0xec,8);
-  if(lock==='party'){mod.write8(0xe200,1);mod.write8(0xe02c,0);}
+  if(lock.startsWith('party')){mod.write8(lock==='party1'?0xe22c:0xe42c,1);mod.write8(0xe02c,0);}
   if(lock==='dead'){mod.write16(0xe182,0);mod.write8(0xe191,0x80);}
   step(0x400,4);assert.equal(mod.read8(0xe190),0x40,lock);assert.equal(mod.statusRecovery,null,lock);
-  mod.write8(0xd0,0);mod.write8(0xec,0);mod.write8(0xe200,0);mod.write8(0xe02c,1);
+  mod.write8(0xd0,0);mod.write8(0xec,0);mod.write8(0xe22c,0);mod.write8(0xe42c,0);mod.write8(0xe02c,1);
  }
  assert.equal(mod.read16(0xe182),0);assert.equal(mod.read8(0xe191),0x80);
 });

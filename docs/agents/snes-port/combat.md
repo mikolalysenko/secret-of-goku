@@ -30,7 +30,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Level 99, skills 8:99, 999 HP (missing HP kept), strength 255 / attack byte 255, DEF +160/80 (+320/160 SSJ) | Done | every scenario's stat sequence; debug presets `sword`, `late`, `flight` now FULL |
 | Heavy Gi (−10% strength, −20% agility, never stacking on rebuilds), DUST BAG names, weapon tiers | Done (gi), names and icons patched | `heavy-gi`, `heavy-gi-ssj` (armor ring off/on) |
 | Senzu Bean (name, targets through the item ring) | Ported, not yet compared | — |
-| Status recovery (focus breaks sleep / petrify / Frosty / Balloon / Engulf; poison and sleep break SSJ) | Ported, not yet compared | — |
+| Status recovery (focus breaks sleep / petrify / Frosty / Balloon / Engulf; poison and sleep break SSJ) | Done | `recovery`: six native cases, including solo/party petrification, native controller cleanup, resistance and expiry; browser recovery spec and combat unit tests |
 | Effects | Gameplay records done; drawing through fx (`bind.asm`): spawns (impact, ki, burst, status) from the logic, continuous draws (beam picture, aura, orb, lightning) from `combat_field_frame`; placeholder sprites only without the fx library (`!COMBAT_FX_PLACEHOLDER`) | fx's `gallery` / `beams` pass with combat; on-screen look not reviewed yet (see Remaining work) |
 | Impact feel (`mana-mod.js` `strike()`): starburst by blow, the struck actor drawn white, the native shake through the hit stop, camera kick, the kick's shockwave, quake and brightening, a ki shot's starburst (see Runtime) | Done | Mesen captures against the browser's pictures; `snes/test/gameplay` misses the frames it missed before |
 | World flight: focus and transformation | Done (`combat_world_frame`) | — |

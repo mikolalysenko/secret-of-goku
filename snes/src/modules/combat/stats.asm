@@ -533,13 +533,14 @@ cb_status_recovery:
 	LDA.w #$FFFF
 	STA !cb_rec_map
 .noRec
-	; a solo Goku keeps Focus even when stone removed his controller
+	; Stone removes Goku's controller. Allow Focus when nobody else owns
+	; player 1, even with companions present; never take their controls.
 	SEP #$20
 	LDA $E02C
 	AND.b #$01
 	BNE .owner
-	LDA $E200
-	ORA $E400
+	LDA $E22C
+	ORA $E42C
 	AND.b #$01
 	BEQ .owner
 	REP #$20

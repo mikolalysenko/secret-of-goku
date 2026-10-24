@@ -79,9 +79,9 @@ class ManaMod {
   recoverStatus(input){
     const map=this.read16(0xdc);
     if(this.statusRecovery&&(this.statusRecovery.map!==map||this.frame>=this.statusRecovery.until))this.statusRecovery=null;
-    // Petrification removes the native controller assignment. A solo Goku
-    // still needs to hear Focus; never take another party member's controls.
-    const owner=(this.read8(0xe02c)&1)||![0xe200,0xe400].some(a=>this.read8(a)&1);
+    // Petrification removes the native controller assignment. Keep Focus
+    // available unless another party member actually owns player 1.
+    const owner=(this.read8(0xe02c)&1)||![0xe22c,0xe42c].some(a=>this.read8(a)&1);
     const field=this.nativeField&&!this.nativeFlight&&!this.ending?.active&&!this.frieza?.inputLocked&&
       this.read8(0xe4)===1&&this.read8(0xe5)===1&&!this.read8(0xd0)&&!(this.read8(0xec)&0xfe)&&!(this.read8(0xed)&0x40)&&
       (this.read8(0xe000)&1)&&this.read16(0xe182)>0&&!(this.read8(0xe191)&0x80);

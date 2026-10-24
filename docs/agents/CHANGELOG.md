@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Combat: power out of petrification with companions present (2026-10-24)
+
+- Fixed Focus recovery in both editions. Petrification removes Goku's
+  controller; the recovery gate incorrectly treated a companion's presence
+  as proof that they owned player 1. It now checks their controller bytes,
+  allowing recovery when player 1 is unassigned while preserving another
+  controlled character's input.
+- The cartridge changes two operand bytes, with the same instruction count
+  and timing. Native cleanup still restores the controller and palette;
+  resistance, poison, HP and script/menu locks retain their existing rules.
+- Strict build, 43 combat unit tests, six browser recovery cases and six
+  native Mesen recovery cases pass. The latter exercise actual status
+  application, solo/party petrification, all five recoverable conditions,
+  repeated applications, expiry and the transformation chord. Run
+  `node snes/test/combat/run.mjs recovery`.
+
 ## SNES audio: a pulsing DBZ-style charge (2026-10-24)
 
 - Replaced the held charge/power-up's mains hum and spring chirp with a

@@ -2,15 +2,15 @@ import {test,expect} from '@playwright/test';
 import {existsSync,readFileSync,writeFileSync} from 'node:fs';
 const fixture='.local/graphics-audit/party.json';
 test.setTimeout(120000);
-for(const [condition,bit]of[['petrification',0x40],['sleep',0x10],['Frosty',0x20],['Balloon',0x100],['burning',0x4000]])test(`Focus breaks native ${condition} and repeated applications cannot stun lock Goku`,async({page},info)=>{
+for(const [condition,bit,party]of[['petrification',0x40,false],['petrification with companions',0x40,true],['sleep',0x10,false],['Frosty',0x20,false],['Balloon',0x100,false],['burning',0x4000,false]])test(`Focus breaks native ${condition} and repeated applications cannot stun lock Goku`,async({page},info)=>{
  test.skip(!existsSync(fixture)||!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires private native fixtures.');
  await page.goto('/');await page.waitForFunction(()=>mana.ready);
- const disabled=await page.evaluate(({s,bit})=>{
+ const disabled=await page.evaluate(({s,bit,party})=>{
   mana.pause();s.romHash=mana.hash(mana.snes.cart.data);mana.restore(s);const m=mana.mod;
-  Object.assign(m.options,{enabled:true,power:true,superSaiyan:true});mana.write8(0xe200,0);mana.write8(0xe400,0);mana.run(4);
+  Object.assign(m.options,{enabled:true,power:true,superSaiyan:true});if(!party){mana.write8(0xe200,0);mana.write8(0xe400,0);}mana.run(4);
   mana.write16(0xe190,bit);mana.run(90);
   return{can:m.canAttack,status:mana.read16(0xe190),owner:mana.read8(0xe02c),hp:mana.read16(0xe182)};
- },{s:JSON.parse(readFileSync(fixture)),bit});
+ },{s:JSON.parse(readFileSync(fixture)),bit,party});
  expect(disabled.can).toBe(false);expect(disabled.status&bit).toBe(bit);if(bit===0x40)expect(disabled.owner&1).toBe(0);
  const result=await page.evaluate(bit=>{
   const m=mana.mod;mana.run(1,[10]);const cleared=mana.read16(0xe190);let waited=0;
