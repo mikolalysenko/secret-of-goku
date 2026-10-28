@@ -266,7 +266,15 @@ fd_burst_at:
 	BNE +
 	RTS
 +	STA.w !m_t7                    ; entries
-	; wholly on the screen (every top left at x 0-255, y -31-223) with room
+	; Keep complete early burst cells, but do not let a crowded explosion
+	; push the fighters or beams over the PPU's per-line sliver limit.
+	LDA.w !m_t7
+	ASL : ASL
+	CLC : ADC.w !o_slot
+	CMP.w #24*4+1
+	BCC +
+	RTS
++	; wholly on the screen (every top left at x 0-255, y -31-223) with room
 	; for all: the packed entries and the high-table bytes as they are
 	LDA.l !XDATA_ORBIT_BURST+8,X
 	CLC : ADC.w !d_t2

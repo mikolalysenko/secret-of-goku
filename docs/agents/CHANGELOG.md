@@ -4,6 +4,16 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: bounded explosions keep the fighters and beams whole (2026-10-28)
+
+- Cap burst drawing at 24 complete cells per frame. Early explosion cells
+  remain intact; later whole assemblies yield instead of pushing Goku,
+  Frieza or the beams over the PPU's per-line sliver budget. Effect timing,
+  collision and damage are unchanged.
+- Orbit fight: lag 3 → 2, protagonist/beam sliver loss 132 → 0, burst loss
+  598 → 153. Dense scenery burst loss falls 1,168 → 600. All fight,
+  scenery and clash frame references, palettes, HDMA and hardware checks pass.
+
 ## Orbit: a lighter held-input light frame (2026-10-28)
 
 - While the orbit already holds the pad, Frieza's light frame now skips the
