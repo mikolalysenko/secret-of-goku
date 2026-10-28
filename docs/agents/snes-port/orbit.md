@@ -1106,8 +1106,10 @@ path):
   (`frieza/beast.asm` `fz_find_boss_orbit`, same carry, X and A;
   `-DFRIEZA_ORBIT_BOSS_LOOP` keeps the loop): the watch costs 1.3 lines
   instead of 2.1 and the light frame 6.3 (on snes-int 317f637; 7.0 with
-  the loop). Left: the input lock (1.6), the story ticks (1.4), the watch,
-  the check (0.6), the music (0.6). A cache of the search's answer would
+  the loop). Left: the input lock, the story ticks (1.4), the watch,
+  the check (0.6), the music (0.6). Once the orbit holds the pad, the light
+  frame now skips the lock query and publishes the mask directly; the full
+  path still handles the return and the unlock. A cache of the search's answer would
   not be exact: the native actors can change any frame. The quick-start cases (`fight`, `clash`) run
   his module with Goku not yet arrived (`!persist_goku_active` 0): his
   Goku-off path (3.8 lines), which the check leaves at its first test

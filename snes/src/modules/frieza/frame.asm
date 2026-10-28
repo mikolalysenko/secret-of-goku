@@ -993,6 +993,14 @@ fz_orbit_light:
 	JSR fz_quake_tick
 	JSR fz_story_tick
 	JSR fz_death_tick
+	LDA !fz_tflags                    ; the orbit holds the pad throughout:
+	AND.w #!FZT_LOCKED
+	BNE .locked                       ; keep the mask, skip the lock query
 	JSR fz_lock_tick
+	BRA .music
+.locked
+	LDA.w #$FFFF
+	STA.l !core_pad_mask
+.music
 	JSR fz_music_tick
 	JMP fz_try_quiet

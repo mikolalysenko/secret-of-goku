@@ -4,6 +4,17 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: a lighter held-input light frame (2026-10-28)
+
+- While the orbit already holds the pad, Frieza's light frame now skips the
+  input-lock query and writes the mask directly. The full path still handles
+  the return to the deck and the unlock, and all story/death/music ticks are
+  unchanged.
+- Strict build, the full Frieza suite, orbit hand-off/return/fight/clash and
+  quiet/world cost checks pass. Fight lags 3 frames, clash 26 (mostly the
+  fanfare load), and the real return 23, with no state, palette, HDMA or
+  landing regressions.
+
 ## SNES FX: fresh companion weapon art and whole crowded auras (2026-10-28)
 
 - Queue each companion's newly prepared fifth weapon-effect piece at
