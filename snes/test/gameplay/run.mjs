@@ -56,6 +56,7 @@ const destroyScans=['dst_scan_attack','dst_barrier_hit'].map(n=>symbols.get(n));
 const spans=modules.map((n,i)=>`{${JSON.stringify(n)},${symbols.get(n)},${symbols.get('modules_field_frame')+4*(i+1)}}`);
 const nmiModules=readFileSync(join(repo,'snes/src/modules.asm'),'utf8').split('modules_field_nmi:')[1].split('RTL')[0].match(/JSL \w+/g).map(s=>s.slice(4));
 for(const [i,n] of nmiModules.entries())spans.push(`{${JSON.stringify('nmi_'+n)},${symbols.get(n)},${symbols.get('modules_field_nmi')+4*(i+1)}}`);
+if(symbols.has('fx_preupload'))spans.push(`{"nmi_fx_preupload",${symbols.get('fx_preupload')},${symbols.get('modules_field_preupload')+12}}`);
 spans.push('{"nmi_native",49320,49496}'); // C0A8 -> C158
 spans.push(`{"combat_logic",${symbols.get('cb_hook_logic_read')},${symbols.get('cb_hook_logic_read')+17}}`);
 const fastField=symbols.has('core_field_scroll');

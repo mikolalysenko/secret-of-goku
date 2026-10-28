@@ -8,15 +8,14 @@
 --   native sprites on cache tiles: never written by FX or UI while the
 --     game claimed them (its effect counts, requests and weapon effects).
 -- Checked at the end of each field NMI (all uploads done, before display),
--- against the frame whose OAM that vblank uploaded. An effect that draws a
--- cell in the frame it allocates it shows that entry's old contents when a
--- late vblank leaves no time for the upload: counted as fxLate, reported
--- but not a failure (the aura never draws a cell before it is resident).
--- Likewise the game shows a new effect's sprite from its first frame but
--- streams the piece only in the slot's round-robin phase, up to four
--- frames later; tiles FX wrote before the game claimed them show until
--- then: nativeLate, reported only. fxForeign counts the late FX sprites
--- whose tiles the game or a UI lease wrote last (its digits, say).
+-- against the frame whose OAM that vblank uploaded. Native fifth pieces are
+-- queued as soon as the game prepares them, so nativeLate is required to be
+-- zero. Speculative FX late frames are reported, with no foreign pixels.
+-- Likewise the game can show a new effect's sprite before its round-robin
+-- stream. FX's native preparation hook queues the fifth pieces immediately,
+-- so nativeLate and fxLate are both required to be zero. fxForeign counts
+-- late FX sprites whose tiles the game or a UI lease wrote last (its digits,
+-- say).
 -- The scene's events, per completed frame: killed enemies turning into
 -- damage-number objects (species $F9; numbers, slot5Numbers: those that
 -- stream into the cache's region A), Super Saiyan form changes
@@ -106,6 +105,10 @@ local function dmaWrite(_, value)
   for ch = 0, 7 do
     if value & (1 << ch) ~= 0 then
       local size = H.r16(0x4305 + ch * 16); if size == 0 then size = 0x10000 end
+      local src = H.r16(0x4302 + ch * 16) | (H.r8(0x4304 + ch * 16) << 16)
+      -- The native weapon-ready hook queues through core (bank A0). Its
+      -- prepared WRAM cells are the game's, not a UI lease's pixels.
+      if who == 'ui' and ((src >= 0x7E4200 and src < 0x7E4300) or (src >= 0x7E4400 and src < 0x7E4500)) then who = 'native' end
       if H.r8(0x4301 + ch * 16) == 0x18 then
         for w = va, va + size // 2 - 1, 16 do
           local t = (w - 0x6000) >> 4
@@ -304,7 +307,7 @@ hook(SYM.core_field_nmi_done, function()
       local attr = H.oam(i * 4 + 3)
       local t = H.oam(i * 4 + 2) | ((attr & 1) << 8)
       local isAura = i >= displayed.native and displayed.aura[t] and tileEntry[t] ~= nil
-      spr[#spr + 1] = {y=H.oam(i * 4 + 1), size=size, cols=cols, aura=isAura}
+      spr[#spr + 1] = {slot=i, tile=t, y=H.oam(i * 4 + 1), size=size, cols=cols, aura=isAura}
       if isAura then
         local y = H.oam(i * 4 + 1)
         for d = 0, size - 1 do local yy = (y + d) & 255; if yy < 224 then lines[yy] = true end end
@@ -328,7 +331,13 @@ hook(SYM.core_field_nmi_done, function()
     end
     if dropped then
       stats.auraDropped = stats.auraDropped + 1
-      note('aura-drop', {line=dropped})
+      local occupants = {}
+      for _, sp in ipairs(spr) do
+        if sp.cols > 0 and ((dropped - sp.y) & 255) < sp.size then
+          occupants[#occupants + 1] = {slot=sp.slot, tile=sp.tile, cols=sp.cols, aura=sp.aura}
+        end
+      end
+      note('aura-drop', {line=dropped, occupants=occupants})
     end
   end
   if ui then stats.uiFrames = stats.uiFrames + 1 end

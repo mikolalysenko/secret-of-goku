@@ -24,7 +24,9 @@
 // 242 lightning and spark sprites showed its digits before the fix).
 // No FX sprite may show the game's or a readout lease's pixels while its
 // upload is late either (fxForeign: 1 in `fight`, a ki shot, and 36 in
-// `fight-ssj` before the late-upload fix).
+// `fight-ssj` before the late-upload fix). Native fifth pieces queue at
+// preparation, so nativeLate is a hard failure. Speculative FX late frames
+// remain informational; fxForeign must stay zero.
 // NATIVE_SCENES filters cases; NATIVE_OUT selects the output directory.
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,join} from 'node:path';
@@ -86,7 +88,7 @@ for(const [name,bundle,form,script,conflict,extra='',needs={}] of scenes){
   const exercised=(!conflict||(v.regionAWrites>0&&v.nativeWritesHeld>0))&&!missing.length;
   const aura=needs.aura!==false;
   const whole=v.auraPartial===0&&(needs.lineLimit===false||v.auraDropped===0)&&(!aura||v.auraDrawn>=40);
-  const pass=v.auraBad===0&&v.fxBad===0&&v.fxForeign===0&&v.uiBad===0&&v.nativeBad===0&&v.freeRefs===0&&(!aura||v.auraFrames>=40)&&exercised&&whole;
+  const pass=v.auraBad===0&&v.fxBad===0&&v.fxForeign===0&&v.uiBad===0&&v.nativeBad===0&&v.nativeLate===0&&v.freeRefs===0&&(!aura||v.auraFrames>=40)&&exercised&&whole;
   const row={name,pass,...Object.fromEntries(['frames','checked','auraFrames','auraBad','auraBadRows','auraDrawn','auraPartial','auraDropped','fxBad','fxLate','fxForeign','fxShown','fxClaimed','uiBad','uiFrames','nativeBad','freeRefs','nativeLate','nativeWrites','nativeWritesHeld','regionAWrites','numbers','slot5Numbers','formChanges','gokuHits','lag'].map(k=>[k,v[k]])),details:(v.details??[]).slice(0,8)};
   summary.push(row);
   console.log(`${name}: ${pass?'pass':'FAIL'}; aura ${v.auraFrames} frames, ${v.auraBad} wrong aura sprites (rows top/middle/bottom ${(v.auraBadRows??[]).join('/')}); ${v.auraDrawn} flames built, ${v.auraPartial} partial, ${v.auraDropped} cut by the line limits; stale FX ${v.fxBad} of ${v.fxShown} shown (${v.fxClaimed} while the game claims region A), UI ${v.uiBad}, native ${v.nativeBad}, free ${v.freeRefs}; late FX uploads ${v.fxLate} (${v.fxForeign} over the game's or UI's pixels), game sprites before their stream ${v.nativeLate}; game writes on cache tiles ${v.nativeWrites} (${v.nativeWritesHeld} while held, region A ${v.regionAWrites}); ${v.numbers} killed (${v.slot5Numbers} in slot 5), ${v.formChanges} form changes, ${v.gokuHits} hits on Goku${exercised?'':` (not exercised${missing.length?': '+missing.join(', '):''})`}`);

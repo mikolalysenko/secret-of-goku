@@ -34,7 +34,107 @@
 ;   A late vblank that slips the upload then shows nothing, not digits.
 ; - FX's allocator checks the free entry it takes (fx_cache_candidate);
 ;   UI leases skip every claimed entry (fx_native_mask, once per frame).
-; All: M16/X16, DB = $7E, any D (no direct page); X/Y lost unless noted.
+; Cache routines below: M16/X16, DB = $7E, any D (no direct page); X/Y lost
+; unless noted. The weapon-ready hook above has its own M8/X16 ABI.
+
+; C2:BF7C has just prepared a weapon effect's fifth piece. The native
+; streamer may not send it for four more vblanks, although its sprite is
+; already visible. Queue the prepared cells now for the shared regions used
+; by the two companions; the native phase-4 stream remains the fallback when
+; the core queue is full. Entered M8/X16, with the original helper's outputs.
+%orig4($C2BF7C, $20E08DFE)
+%hijack($C2BF7C, fx_native_weapon_ready, 4, fx)
+
+macro fx_native_weapon_cell(vram, source)
+	LDA.w #<vram>
+	LDX.w #64
+	LDY.w #<source>
+	JSL core_queue_vram
+	BCC ?queued
+	JMP .done
+?queued:
+endmacro
+
+; An active Analyzer lease keeps its cells until the ordinary native-claim
+; pass. Free and FX-owned entries are safe for the early native upload.
+macro fx_native_weapon_unleased(entry)
+	LDA.l !fx_ccell+(<entry>*2)
+	CMP.w #$8000
+	BCC ?ok
+	CMP.w #$FFFE
+	BCS ?ok
+	JMP .done
+?ok:
+endmacro
+
+fx_native_weapon_ready:
+	; Remember the actor offset without changing the native helper's inputs.
+	PHA
+	PHB
+	LDA.b #$31
+	PHA
+	PLB
+	STX.w !fx_s&$FFFF
+	PLB
+	PLA
+	INC $E08D,X
+	; BF83 returns with RTS. Send it through C2:BF82's original RTL, with
+	; our own bank/offset beneath that return for the continuation here.
+	PHK
+	PER .returned-1
+	PEA $BF82-1
+	JML $C2BF83
+.returned
+	PHP
+	REP #$30
+	PHA
+	PHX
+	PHY
+	PHB
+	PEA $7E7E : PLB : PLB          ; core_queue_vram requires DB = $7E
+	LDA.l !fx_s
+	CMP.w #$0200
+	BNE +
+	JMP .girl
++	CMP.w #$0400
+	BEQ .sprite
+	JMP .done
+.sprite
+	LDA.l !fx_cbudget
+	BNE +
+	JMP .done                  ; a crowded native phase keeps the old stream
++	%fx_native_weapon_unleased(13)
+	%fx_native_weapon_unleased(14)
+	SEP #$20
+	LDA.b #$7E
+	STA.w !core_scratch&$FFFF
+	REP #$20
+	%fx_native_weapon_cell($7AC0, $4400)
+	%fx_native_weapon_cell($7BC0, $4440)
+	%fx_native_weapon_cell($7AE0, $4480)
+	%fx_native_weapon_cell($7BE0, $44C0)
+	BRA .done
+.girl
+	LDA.l !fx_cbudget
+	BNE +
+	JMP .done
++	%fx_native_weapon_unleased(9)
+	%fx_native_weapon_unleased(10)
+	SEP #$20
+	LDA.b #$7E
+	STA.w !core_scratch&$FFFF
+	REP #$20
+	%fx_native_weapon_cell($7880, $4200)
+	%fx_native_weapon_cell($7980, $4240)
+	%fx_native_weapon_cell($78A0, $4280)
+	%fx_native_weapon_cell($79A0, $42C0)
+.done
+	PLB
+	PLY
+	PLX
+	PLA
+	PLP
+	RTL
 
 ; A = phase of the coming vblank (0-4).
 fx_native_drop:

@@ -109,7 +109,8 @@ function test()
     maxNmi=math.max(maxNmi,lines)
     if s['ppu.scanline']<225 or lines>=37 then
       nmiOverruns=nmiOverruns+1
-      lateNmis[#lateNmis+1]={frame=H.frame,phase=H.r8(0x7E0056),parts=nmiParts,line=s['ppu.scanline'],duration=lines}
+      lateNmis[#lateNmis+1]={frame=H.frame,phase=H.r8(0x7E0056),parts=nmiParts,line=s['ppu.scanline'],duration=lines,
+        cellBudget=H.r16(0x317882), learned=H.r16(0x317A2C+H.r8(0x7E0056)*2), pending=H.r16(0x317880), failed=H.r16(0x317A28)}
     end
     nmiStart=nil
   end

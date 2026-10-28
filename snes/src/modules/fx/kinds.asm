@@ -80,6 +80,14 @@ endif
 ; three overlapping orbs for visual comparisons. Shot speed, range and
 ; collisions are unchanged; basic shots must leave CPU and OBJ room for Goku.
 fx_k_ki:
+	; In a crowded picture, extra shots yield before they push a flame or a
+	; party sprite over the PPU's per-line sliver budget. Gameplay projectiles
+	; and collisions are independent of this drawing bound.
+	LDA.w !core_oam_cursor&$FFFF
+	CLC
+	ADC.w !core_oam_front_n&$FFFF
+	CMP.w #33*4
+	BCS .culled
 	LDA.w #!FX_E_FRONT
 	JSR fx_depth
 	JSR fx_depth_up

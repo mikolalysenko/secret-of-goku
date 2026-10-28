@@ -127,7 +127,7 @@ Timed kinds (`fx_spawn`; FX owns the age and ends them):
 | Kind | Id | Browser source | Arguments | Notes |
 | --- | --- | --- | --- | --- |
 | `FX_IMPACT` | `$01` | `effect.kind==='impact'` | `!fx_dir` turn, `!fx_a` life (0 = 10), `!fx_b` hold frames | Lucent Beam impact spark (gold with `FX_F_GOLD`), frame `min(5,age/2)`, two extra sparks at ±(7,−3) for 5 frames. *front* |
-| `FX_KI` | `$02` | `effect.kind==='ki'` | `!fx_dir`, `!fx_a` range (0 = 256) | Ki shot from the palm: three charge-orb cells trailing at 7 px, front at `min(range,(age+1)·14)`, life 22, muzzle cell for 2 frames; gold with `FX_F_GOLD`. Combat computes the same front for hits and calls `fx_kill` at the first contact. *front* |
+| `FX_KI` | `$02` | `effect.kind==='ki'` | `!fx_dir`, `!fx_a` range (0 = 256) | Ki shot from the palm: one compact moving orb in the shipping renderer, muzzle cell for 2 frames; gold with `FX_F_GOLD`. Combat computes the same front for hits and calls `fx_kill` at the first contact. Extra drawings yield once 33 native/module sprites are staged, protecting crowded scanlines without changing projectiles or collisions. *front* |
 | `FX_BURST` | `$03` | `powerBurst` | `!fx_a` radius (0 = 56) | Transformation blast ring: 16 gold arcs, then 8 sparks, radius `r+1.5·age`, life 14; blue with no `FX_F_GOLD` |
 | `FX_EXPLODE` | `$04` | `combustion('burst')`, `brazierBurst` | `!fx_dir` turn 0–3, `!fx_style` bit 0 flip, bit 1 brazier | One Exploder burst, 7 native frames × 6 ticks; with bit 1 the brazier burst of `dungeon-demolition.js` (three bursts at 0/8/12 frames, (0,−8) turn 0, (−10,2) turn 3, (10,2) turn 1; 54 frames) |
 | `FX_EMBER` | `$05` | `combustion('ember')` | `!fx_dir` heading, `!fx_a` speed (px/frame, 8.8), `!fx_b` life | Fireball ember drifting outward and sinking |
@@ -233,12 +233,9 @@ flight will use the world regions.
 The gameplay build uses one impact spark and one moving ki orb, with a
 two-frame palm flash. `-DFX_DETAIL=1` restores the extra impact satellites
 and three-orb trail for comparisons. Projectile speed, reach and damage are
-unchanged. Offscreen shots are culled before palette/cache work. Cell DMA
-does not start at line 254 or later, reserving time for palettes, colour math,
-the joypad/clock hook and the NMI return; missing animation cells retain the
-prior resident age. The gallery waits up to one native five-phase upload
-cycle for its simultaneous cold-cache orb frames and transformation rings,
-then requires their full sprite counts.
+unchanged. Offscreen shots are culled before palette/cache work. The
+gallery waits for simultaneous cold-cache orb frames and complete compact
+transformation rings, then requires their full sprite counts.
 
 **Palettes**: effect colours are grouped into 15-colour classes, BLUE
 (Lucent Beam, ki, impacts), PINK (Frieza: pink beams, discs, Death
@@ -1067,25 +1064,17 @@ After the fix, the same fights show **0** wrong aura frames (424/424 and
 overwritten by FX or UI while the game owns them (100 tile-frames before,
 in the Super Saiyan fight).
 
-**Remaining limits.**
-- The game shows a newly started weapon effect's sprite from its first
-  frame but streams the piece only in the slot's phase, up to four vblanks
-  later. Until then the sprite shows whatever its tiles held, which may be
-  an FX cell drawn there before the claim. This is the original game's own
-  stale-tile window (the Super Saiyan fight: once, 2 frames). Closing it
-  would need FX to stream the game's source cells itself.
-- A party weapon piece requested by a frame that misses its vblank can
-  be streamed before FX sees the request, and slots 1 and 2 are not checked
-  one phase ahead (the CPU cost above). Either way, a weapon piece's
-  pixels can show on an FX sprite until the next completed frame (none
-  measured). A damage number no longer can, since its object claims its
-  cells from the kill.
-- Older and unrelated to the game: an effect that draws a cell in the frame
-  it allocates it shows the entry's previous FX cell for one frame when a
-  late vblank leaves no time for the upload (`fxLate`: 7, 99 and 2 sprite
-  frames in `fight`, `fight-ssj` and `charge`). It is never the game's or a
-  lease's pixels (`fxForeign` 0 in every scene). The aura never draws a
-  cell before it is resident.
+**Fallback.** The weapon-ready hook queues each companion's fifth piece as
+soon as the native helper prepares it. An active Analyzer lease is left
+alone until the ordinary native-claim pass. A zero learned upload budget or
+a full core queue keeps the original phase-4 stream as the fallback; the
+saturated-queue case is not forced by the scene tests.
+
+The native stale-tile window is a hard failure now: `nativeLate = 0` in
+every scene. Speculative FX late frames remain an older, separate limit;
+`fxForeign = 0` is still required. Extra ki drawings yield once 33
+native/module sprites are staged, keeping crowded aura rows inside the
+PPU's sliver limit without changing projectile logic or collisions.
 
 **Tests.** `native-cells` (run by `run.mjs` after `focus-scenes`, production
 ROM, real input, exact frames) checks the VRAM behind every displayed

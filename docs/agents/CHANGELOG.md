@@ -4,6 +4,26 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES FX: fresh companion weapon art and whole crowded auras (2026-10-28)
+
+- Queue each companion's newly prepared fifth weapon-effect piece at
+  `C2:BF7C` instead of leaving its visible sprite on old shared-cache tiles
+  for up to four vblanks. The native phase-4 stream remains the fallback for
+  a full core queue or a zero learned upload budget. Analyzer leases keep
+  their cells until the ordinary native-claim pass.
+- The real-input party fight went from 48 stale native 8x8 tile checks to 0.
+  All ten native-cell scenes now require `nativeLate = 0`; speculative FX's
+  older informational `fxLate` remains separate, with `fxForeign = 0`.
+- Extra ki drawings yield once 33 native/module sprites are staged. This
+  keeps crowded Super Saiyan aura rows within the PPU's sliver limit without
+  changing projectile motion, collisions or damage.
+- Validation: strict build; complete FX suite and all 34 assembled tests;
+  Analyzer charge; party water/flight/teleport/whip cases. All 13 long
+  gameplay cases pass with zero vblank overruns. Against the previous
+  documented long-run counts, missed frames fall from 44 to 4 for charge,
+  13 to 7 for flying ki, and 14 to 3 for teleport. Walk/flying ki/teleport
+  retain their open timing issues; the other cases are zero.
+
 ## SNES audio: sharp Instant Transmission and stronger power impacts (2026-10-24)
 
 - Instant Transmission uses the original recording's onset as a short,
