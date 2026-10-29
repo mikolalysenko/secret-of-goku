@@ -40,13 +40,13 @@ local entryTile, entryVram, tileEntry = {}, {}, {}
 local cellData = {}
 local lastWriter, lastWrite = {}, {}   -- 8x8 tile -> 'native'|'fx'|'ui', frame
 local busyFrom = {}                     -- cache entry -> first frame of its current claim
-local pending, displayed = nil, nil
+local pending, displayed, lagTiles = nil, nil, nil
 local auraStart, auraOpen, auraTiles = nil, false, {}
 local auraAsm, auraId, auraDrawn = {}, nil, false
 local cellRow = {}                      -- aura cell -> its row in its flame (0 top)
 local stats = {frames=0,checked=0,auraFrames=0,auraBad=0,auraBadRows={0,0,0},auraDrawn=0,auraPartial=0,auraDropped=0,fxBad=0,fxLate=0,uiBad=0,
   uiFrames=0,bothFrames=0,nativeBad=0,nativeLate=0,freeRefs=0,nativeWrites=0,nativeWritesHeld=0,
-  regionAWrites=0,lag=0,shots=0,fxForeign=0,fxShown=0,fxClaimed=0,numbers=0,slot5Numbers=0,formChanges=0,gokuHits=0}
+  regionAWrites=0,lag=0,lagArtChanges=0,shots=0,fxForeign=0,fxShown=0,fxClaimed=0,numbers=0,slot5Numbers=0,formChanges=0,gokuHits=0}
 local details = {}
 local shotNext = nil
 local species, lastForm, lastHits = {}, nil, nil
@@ -221,14 +221,46 @@ end)
 hook(0x00C0A8, function()
   if not Cells.measuring then return end
   local ec = H.r8(0x7E00EC)
-  if ec & 1 ~= 0 then displayed = pending; pending = nil
+  if ec & 1 ~= 0 then displayed = pending; pending = nil; lagTiles = nil
   else
     stats.lag = stats.lag + 1
     if ec & 8 ~= 0 then displayed = nil end
+    -- A lag vblank retains this OAM picture. Hash every tile behind it so
+    -- the NMI exit can reject native art changing under the held sprites.
+    lagTiles = {}
+    for i = 0, 127 do
+      local y = H.oam(i * 4 + 1)
+      if y < 224 or y >= 240 then
+        local hi = (H.oam(512 + (i >> 2)) >> ((i & 3) * 2)) & 3
+        local attr = H.oam(i * 4 + 3)
+        local t = H.oam(i * 4 + 2) | ((attr & 1) << 8)
+        local n = (hi & 2) ~= 0 and 4 or 2
+        for dy = 0, n - 1 do for dx = 0, n - 1 do
+          local tt = t + dy * 16 + dx
+          if not lagTiles[tt] then
+            local h = 0
+            for b = 0, 31 do h = (h * 33 + H.vram(tt * 32 + b)) & 0xFFFFFFFF end
+            lagTiles[tt] = {hash=h, slot=i}
+          end
+        end end
+      end
+    end
   end
 end)
 hook(SYM.core_field_nmi_done, function()
-  if not Cells.measuring or not displayed then return end
+  if not Cells.measuring then return end
+  if lagTiles then
+    for t, old in pairs(lagTiles) do
+      local h = 0
+      for b = 0, 31 do h = (h * 33 + H.vram(t * 32 + b)) & 0xFFFFFFFF end
+      if h ~= old.hash then
+        stats.lagArtChanges = stats.lagArtChanges + 1
+        note('lag-art', {slot=old.slot, tile=t, before=old.hash, after=h, phase=H.r8(0x7E0056)})
+      end
+    end
+    lagTiles = nil
+  end
+  if not displayed then return end
   stats.checked = stats.checked + 1
   local aura, ui = false, false
   for i = 0, 127 do

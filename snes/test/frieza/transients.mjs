@@ -64,7 +64,8 @@ function loadRgb(PNG,path){
 // dir: recording (tNNNNN.png), meta: per-frame records (meta[i] is frame
 // i + 1), rows: friezaRows(). Returns the summary, per-frame entries and
 // failures.
-export function analyseTransients({repo,dir,meta,rows,first=4,limit=8,sheets=true}){
+export function analyseTransients({repo,dir,meta,rows,first=4,limit=8,sheets=true,isTarget=isFrieza}){
+  const target=isTarget;
   const {PNG}=createRequire(join(repo,'package.json'))('pngjs');
   const N=meta.length;
   const pic=t=>join(dir,`t${String(t).padStart(5,'0')}.png`);
@@ -91,7 +92,7 @@ export function analyseTransients({repo,dir,meta,rows,first=4,limit=8,sheets=tru
   const rowKeys=new Set(rows.map(r=>r.join(',')));
   const faults=[];
   for(const m of meta){
-    const used=new Set(parseOam(m.oam).filter(isFrieza).map(s=>s.pal));
+    const used=new Set(parseOam(m.oam).filter(target).map(s=>s.pal));
     for(const p of used){
       const c=[];for(let i=1;i<16;i++){const o=((p*16+i)*2)*2;c.push(parseInt(m.cg.slice(o+2,o+4)+m.cg.slice(o,o+2),16));}
       if(!rowKeys.has(c.join(',')))faults.push({frame:m.f,picture:m.f+1,palette:p,colours:c.map(v=>v.toString(16).padStart(4,'0')).join(' ')});
@@ -108,7 +109,7 @@ export function analyseTransients({repo,dir,meta,rows,first=4,limit=8,sheets=tru
     const oP=oamOf(t-1),oC=oamOf(t),oN=oamOf(t+1),oPP=oamOf(t-2),oNN=oamOf(t+2);
     const keysP=new Set(oP.map(s=>s.key)),keysN=new Set(oN.map(s=>s.key)),keysC=new Set(oC.map(s=>s.key));
     const keysPP=new Set(oPP.map(s=>s.key)),keysNN=new Set(oNN.map(s=>s.key));
-    const fzC=oC.filter(isFrieza),fzP=oP.filter(isFrieza),fzN=oN.filter(isFrieza);
+    const fzC=oC.filter(target),fzP=oP.filter(target),fzN=oN.filter(target);
     const count={pixels:0,screen:0,bg:0,other:0,motion:0,frieza:0};
     let mask=null,x0=999,y0=999,x1=-1,y1=-1;
     for(let i=0,p=0;i<256*224;i++,p+=4){
@@ -120,7 +121,7 @@ export function analyseTransients({repo,dir,meta,rows,first=4,limit=8,sheets=tru
       if(screen){count.screen++;continue;}
       // another sprite over it appeared, vanished, moved or changed: its own
       // (effects or natives drawn over Frieza's boxes)
-      const otherChanged=[oP,oC,oN].some(o=>o.some(s=>!isFrieza(s)&&covers(s,x,y)&&!(keysP.has(s.key)&&keysC.has(s.key)&&keysN.has(s.key))));
+      const otherChanged=[oP,oC,oN].some(o=>o.some(s=>!target(s)&&covers(s,x,y)&&!(keysP.has(s.key)&&keysC.has(s.key)&&keysN.has(s.key))));
       if(otherChanged){count.other++;continue;}
       const onC=fzC.filter(s=>covers(s,x,y)),onP=fzP.filter(s=>covers(s,x,y)),onN=fzN.filter(s=>covers(s,x,y));
       if(onC.length||onP.length||onN.length){

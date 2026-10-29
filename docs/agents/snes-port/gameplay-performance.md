@@ -1878,3 +1878,19 @@ and bsnes-accurate pass the ExHiROM/battery/audio scenarios. Rejected trials
 included broader enemy deferral, whole-OAM reuse, shorter rings, audio defer,
 and native status skips: those either regressed timing, starved uploads or
 broke combat parity and were reverted.
+
+## Beam scenes and the remaining Thanatos peak — October 29, 2026
+
+Long-wave HDMA work is now bounded as described in
+[vegeta.md](vegeta.md#crowded-beam-presentation-october-29-2026). The
+ordinary polygon, opposed-wave tables and decorative edge assemblies each
+have an explicit late-frame policy. `combat-final` has no missed field-logic
+completions in its fight phases and no sprite overflow, visible DMA or NMI
+overruns; intentional hit-stop is reported separately.
+
+New full-party Thanatos cases keep the remaining issue visible: 24 CPU
+misses in 1,440 combat-input frames and 15 in 800 walking frames, all around
+native phase 3. Native/FX cell ownership, held-picture tile hashes and girl
+one-frame transient checks are clean. Experiments that deferred scripted
+companion AI were reverted: core's live party test showed timer starvation.
+This scene is **not** included in the earlier 78-run zero-drop claim.

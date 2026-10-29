@@ -123,6 +123,7 @@ async function fightCase(name,{script,hits,bundle,beam,pilotBeam,shots,fxLog,pro
   if(check)fails.push(...check({events,landed,recs,results,final:r.results.final}));
   writeFileSync(join(r.outDir,'replay.json'),JSON.stringify({bad:bad.slice(0,50),events},null,1));
   return {fails,info:{ticks:results.length,differing:bad.length,phases,final:r.results.final,events:events.length,hits:landed.length,
+    spriteOverflow:r.results.spriteOverflow,lagFrames:r.results.lagFrames,cpuMisses:r.results.cpuMisses,missBy:r.results.missBy,lagBy:r.results.lagBy,nmiOverruns:r.results.nmiOverruns,visibleDma:r.results.visibleDma,timingDetails:r.results.timingDetails,
     taken:landed.filter(e=>e.after<e.before).length,melee:landed.filter(e=>e.melee).length,beamHits:landed.filter(e=>e.beam).length}};
 }
 
@@ -218,7 +219,7 @@ const cases={
     const points=process.env.VEGETA_PROFILE?.split(',')??['vegeta_field_frame','vegeta_field_frame_trial','vegeta_field_frame_room','vg_tick','vg_locks','vg_music'];
     const r=await fightCase('budget',{
       script:[[1500,'']],hits:[[700,65535,0]],
-      profile:rom=>[...points.map(p=>/^[0-9a-f]+$/i.test(p)?parseInt(p,16):sym(p,rom)),0x00B077],
+      profile:rom=>[...points.map(p=>/^[0-9a-f]+$/i.test(p)?parseInt(p,16):sym(p,rom)),0x80B077],
     });
     const rows=readFileSync(join(outRoot,'budget','profile.txt'),'utf8').trim().split('\n').map(l=>l.split(' ').map(Number));
     const span=(a,b)=>a<0||b<0?null:(b-a+262)%262;

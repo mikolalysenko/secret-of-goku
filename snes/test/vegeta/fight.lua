@@ -160,6 +160,58 @@ function test()
   H.wait(20)
   V.gokuActive(true)
   H.w8(0x7ECF3F, 4)
+  local spriteOverflow, spriteShots, lastCore = 0, 0, nil
+  local lagFrames, nmiOverruns, visibleDma, cpuMisses = 0, 0, 0, 0
+  local lagBy, missBy = {}, {}
+  local logicDone = false
+  emu.addMemoryCallback(function() logicDone = false end, emu.callbackType.exec, 0x00B08C, 0x00B08C)
+  emu.addMemoryCallback(function() logicDone = true end, emu.callbackType.exec, 0x80B077, 0x80B077)
+  local timingDetails = {}
+  local function trialActive() return H.r8(0x7EDBC0) == 0x5A end
+  local function nmiEnd()
+    if not trialActive() then return end
+    local line = emu.getState()['ppu.scanline']
+    if line < 225 then
+      nmiOverruns = nmiOverruns + 1
+      if #timingDetails < 16 then timingDetails[#timingDetails + 1] = string.format('nmi f%d l%d act%d age%d', H.frame, line, H.r8(0x7EDBE0), H.r16(0x7EDBE4)) end
+    end
+  end
+  emu.addMemoryCallback(nmiEnd, emu.callbackType.exec, 0x00C164, 0x00C164)
+  emu.addMemoryCallback(nmiEnd, emu.callbackType.exec, 0x80C164, 0x80C164)
+  emu.addMemoryCallback(function()
+    if not trialActive() or (H.r8(0x7E00EC) & 1) ~= 0 or logicDone then return end
+    cpuMisses = cpuMisses + 1
+    local key = string.format('p%d:a%d:t%d', H.r8(0x7EDBC1), H.r8(0x7EDBE0), H.r8(0x7EDBC4))
+    missBy[key] = (missBy[key] or 0) + 1
+  end, emu.callbackType.exec, 0x00C0A8, 0x00C0A8)
+  for b = 0, 0x3F do for _, base in ipairs({b * 0x10000, (b + 0x80) * 0x10000}) do
+    emu.addMemoryCallback(function(_, value)
+      if not trialActive() or value == 0 then return end
+      local st = emu.getState()
+      local target = H.r8(0x4371)
+      if st['ppu.scanline'] < 225 and not st['ppu.forcedBlank'] and (target == 0x18 or target == 0x19 or target == 0x22) then
+        visibleDma = visibleDma + 1
+        if #timingDetails < 16 then timingDetails[#timingDetails + 1] = string.format('dma f%d l%d ch%d dst%02X', H.frame, st['ppu.scanline'], H.r8(0x420B), target) end
+      end
+    end, emu.callbackType.write, base + 0x420B, base + 0x420B)
+  end end
+  emu.addEventCallback(function()
+    if H.r8(0x7EDBC0) ~= 0x5A then return end
+    local core = H.r16(0x7ED700)
+    if lastCore ~= nil and core == lastCore and H.r8(0x7E00D0) == 0 then
+      lagFrames = lagFrames + 1
+      local phase = H.r8(0x7EDBC1)
+      if phase == 1 or phase == 2 then
+        local key = string.format('p%d:a%d:t%d', phase, H.r8(0x7EDBE0), H.r8(0x7EDBC4))
+        lagBy[key] = (lagBy[key] or 0) + 1
+      end
+    end
+    lastCore = core
+    if (H.r8(0x00213E) & 0xC0) ~= 0 then
+      spriteOverflow = spriteOverflow + 1
+      if spriteShots < 12 then spriteShots = spriteShots + 1; H.shot(string.format('sprite-%05d', H.frame)) end
+    end
+  end, emu.eventType.endFrame)
   local tickId = emu.addMemoryCallback(record, emu.callbackType.exec, V_TICK, V_TICK)
   local hookId = emu.addMemoryCallback(function() hookAt[#hookAt + 1] = #recs end, emu.callbackType.exec, V_HOOK, V_HOOK)
   V.door(0x304)
@@ -244,6 +296,14 @@ function test()
   H.result('final', {map = V.map(), cf3f = H.r8(0x7ECF3F), girl = H.r8(0x7EE200) & 1, sprite = H.r8(0x7EE400) & 1,
     trial = H.r8(0x7EDBC0) == 0x5A, phase = H.r8(0x7EDBC1), hp = H.r16(0x7EE182), maxhp = H.r16(0x7EE184), d0 = H.r8(0x7E00D0)})
   H.result('records', #recs)
+  H.result('spriteOverflow', spriteOverflow)
+  H.result('lagFrames', lagFrames)
+  H.result('cpuMisses', cpuMisses)
+  H.result('missBy', missBy)
+  H.result('lagBy', lagBy)
+  H.result('nmiOverruns', nmiOverruns)
+  H.result('visibleDma', visibleDma)
+  H.result('timingDetails', timingDetails)
   H.result('hook', hookAt)
   H.result('start', start)
   H.shot('end')

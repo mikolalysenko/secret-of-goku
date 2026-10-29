@@ -185,6 +185,25 @@ fx_poly_beam:
 	CLC
 	RTS
 .build
+	LDA.l !fx_s
+	EOR.l !fx_pkey+8
+	AND.w #$000F
+	BNE .build_new               ; never reuse another direction or colour
+	LDA.l !fx_poly_on
+	BEQ .build_new
+	JSR fx_frame_vline
+	CMP.w #80
+	BCC .build_new
+	; A long wave changes every frame. On a late frame, retain the last
+	; complete HDMA picture for one update instead of rebuilding past NMI.
+	; The old key remains, so the next affordable frame rebuilds the new pose.
+	LDA.l !fx_pshown
+	STA.l !fx_preuse
+	JSR fx_poly_kind
+	STA.l !fx_poly_req
+	CLC
+	RTS
+.build_new
 	LDA.w #$0000
 	STA.l !fx_preuse
 	JSR fx_poly_build

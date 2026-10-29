@@ -68,6 +68,10 @@ const scenes=[
   ['barrage-kill-ssj',B,1,barrage,true,'',{aura:false,slot5Numbers:1,fxClaimed:20}],
   ['ssj-charge',A,0,ssjCharge,false,'',{formChanges:1,gokuHits:1}],
   ['revert-charge',A,0,revertCharge,false,'',{formChanges:2,gokuHits:1}],
+  // Native boss and ordinary movement must keep the girl's body and fifth
+  // weapon/effect cells coherent outside the Rabite fixture too.
+  ['thanatos-fight','preset__thanatos',0,fight,false,'',{aura:false}],
+  ['thanatos-walk','preset__thanatos',0,Array(8).fill('right:30,left:30,up:20,down:20').join(','),false,'',{aura:false}],
   // Its crowded first charge (flame, lightning, gold sparks, the party) can
   // pass the PPU's 34 slivers on a line: one flame line dropped for one
   // frame (frame 796, line 166 on 431c1b3). Reported, not yet asserted.
@@ -77,11 +81,19 @@ const summary=[];
 for(const [name,bundle,form,script,conflict,extra='',needs={}] of scenes){
   if(process.env.NATIVE_SCENES&&!process.env.NATIVE_SCENES.split(',').includes(name))continue;
   const copy=privateRom(rom,'native-cells-'+name);
-  const pre=`BUNDLE=${JSON.stringify(join(mainCheckout(),'.local/snes-import',bundle))}\nFORM=${form}\nSETUP=""\nSCRIPT=${JSON.stringify(script)}\nSHOTS=4\nSYM={${Object.entries(SYM).map(([n,a])=>`${n}=${a}`).join(',')}}\n${extra.replace(/\\n/g,'\n')}\n`;
+  const pre=`BUNDLE=${JSON.stringify(join(mainCheckout(),'.local/snes-import',bundle))}\nFORM=${form}\nSETUP=""\nSCRIPT=${JSON.stringify(script)}\nSHOTS=4\nRECORD_FRAMES=${process.env.NATIVE_TRANSIENTS==='1'}\nSYM={${Object.entries(SYM).map(([n,a])=>`${n}=${a}`).join(',')}}\n${extra.replace(/\\n/g,'\n')}\n`;
   let r;
   try{r=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test:pre+readFileSync(join(import.meta.dirname,'../lua/cells-check.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'native-cells.lua'),'utf8'),outDir:join(root,name),exactFrames:true});}
   finally{cleanupRom(copy);}
   const v=r.results??{};
+  if(process.env.NATIVE_TRANSIENTS==='1'&&v.actorMeta){
+    const outDir=join(root,name),meta=v.actorMeta;
+    writeFileSync(join(outDir,'actor-meta.json'),JSON.stringify(meta));
+    const {analyseTransients}=await import('../frieza/transients.mjs');
+    const a=analyseTransients({repo,dir:outDir,meta,rows:[],isTarget:s=>s.tile>=0x40&&s.tile<0x80});
+    writeFileSync(join(outDir,'actor-transients.json'),JSON.stringify({totals:a.totals,frames:a.frames},null,2));
+    console.log(`${name} girl transients: ${a.totals.friezaFrames} frames, ${a.totals.frieza} unexplained pixels`);
+  }
   if(r.code!==0||v.error)throw Error(`${name}: ${v.error??r.output.slice(-2000)}`);
   const events=['slot5Numbers','fxClaimed','formChanges','gokuHits'];
   const missing=events.filter(k=>needs[k]&&!(v[k]>=needs[k]));
@@ -89,9 +101,9 @@ for(const [name,bundle,form,script,conflict,extra='',needs={}] of scenes){
   const aura=needs.aura!==false;
   const whole=v.auraPartial===0&&(needs.lineLimit===false||v.auraDropped===0)&&(!aura||v.auraDrawn>=40);
   const pass=v.auraBad===0&&v.fxBad===0&&v.fxForeign===0&&v.uiBad===0&&v.nativeBad===0&&v.nativeLate===0&&v.freeRefs===0&&(!aura||v.auraFrames>=40)&&exercised&&whole;
-  const row={name,pass,...Object.fromEntries(['frames','checked','auraFrames','auraBad','auraBadRows','auraDrawn','auraPartial','auraDropped','fxBad','fxLate','fxForeign','fxShown','fxClaimed','uiBad','uiFrames','nativeBad','freeRefs','nativeLate','nativeWrites','nativeWritesHeld','regionAWrites','numbers','slot5Numbers','formChanges','gokuHits','lag'].map(k=>[k,v[k]])),details:(v.details??[]).slice(0,8)};
+  const row={name,pass,...Object.fromEntries(['frames','checked','auraFrames','auraBad','auraBadRows','auraDrawn','auraPartial','auraDropped','fxBad','fxLate','fxForeign','fxShown','fxClaimed','uiBad','uiFrames','nativeBad','freeRefs','nativeLate','lagArtChanges','nativeWrites','nativeWritesHeld','regionAWrites','numbers','slot5Numbers','formChanges','gokuHits','lag'].map(k=>[k,v[k]])),details:(v.details??[]).slice(0,8)};
   summary.push(row);
-  console.log(`${name}: ${pass?'pass':'FAIL'}; aura ${v.auraFrames} frames, ${v.auraBad} wrong aura sprites (rows top/middle/bottom ${(v.auraBadRows??[]).join('/')}); ${v.auraDrawn} flames built, ${v.auraPartial} partial, ${v.auraDropped} cut by the line limits; stale FX ${v.fxBad} of ${v.fxShown} shown (${v.fxClaimed} while the game claims region A), UI ${v.uiBad}, native ${v.nativeBad}, free ${v.freeRefs}; late FX uploads ${v.fxLate} (${v.fxForeign} over the game's or UI's pixels), game sprites before their stream ${v.nativeLate}; game writes on cache tiles ${v.nativeWrites} (${v.nativeWritesHeld} while held, region A ${v.regionAWrites}); ${v.numbers} killed (${v.slot5Numbers} in slot 5), ${v.formChanges} form changes, ${v.gokuHits} hits on Goku${exercised?'':` (not exercised${missing.length?': '+missing.join(', '):''})`}`);
+  console.log(`${name}: ${pass?'pass':'FAIL'}; aura ${v.auraFrames} frames, ${v.auraBad} wrong aura sprites (rows top/middle/bottom ${(v.auraBadRows??[]).join('/')}); ${v.auraDrawn} flames built, ${v.auraPartial} partial, ${v.auraDropped} cut by the line limits; stale FX ${v.fxBad} of ${v.fxShown} shown (${v.fxClaimed} while the game claims region A), UI ${v.uiBad}, native ${v.nativeBad}, free ${v.freeRefs}; late FX uploads ${v.fxLate} (${v.fxForeign} over the game's or UI's pixels), game sprites before their stream ${v.nativeLate}; held-picture tile changes ${v.lagArtChanges}; game writes on cache tiles ${v.nativeWrites} (${v.nativeWritesHeld} while held, region A ${v.regionAWrites}); ${v.numbers} killed (${v.slot5Numbers} in slot 5), ${v.formChanges} form changes, ${v.gokuHits} hits on Goku${exercised?'':` (not exercised${missing.length?': '+missing.join(', '):''})`}`);
   if(!pass)for(const d of row.details)console.log('  ',JSON.stringify(d));
 }
 writeFileSync(join(root,'summary.json'),JSON.stringify(summary,null,2));

@@ -218,6 +218,19 @@ fx_poly_dual:
 	STA.l !fx_preuse
 	BRA .shown
 .build
+	LDA.l !fx_poly_on
+	BEQ .build_new
+	JSR fx_frame_vline
+	CMP.w #120
+	BCC .build_new
+	; Keep the last complete opposed-wave picture on a crowded frame. The
+	; invalidated key forces a rebuild as soon as the frame has room.
+	LDA.w #$FFFF
+	STA.l !fx_pkey
+	LDA.l !fx_pshown
+	STA.l !fx_preuse
+	BRA .shown
+.build_new
 	; Union of visible scanlines. No more than 28 eight-line entries,
 	; two boundary runs and a neutral guard: at most 183 bytes total.
 	LDA !fxc_one+!XC_Y

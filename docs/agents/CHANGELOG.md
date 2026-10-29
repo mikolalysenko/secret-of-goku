@@ -4,6 +4,28 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES ending UI and beam-scene rendering (2026-10-29)
+
+- Keep BG3 disabled throughout the fatal planet transition and GAME OVER,
+  including after the native line-195 HUD IRQ. New fatal checks cover the
+  ordinary view, an open dialogue and a forced HUD split, sampling visible-line
+  TM writes rather than only still screenshots.
+- Bound long-wave rendering: crowded ordinary and opposed beam frames can reuse
+  their last complete HDMA tables (ordinary reuse also requires the same
+  direction and colour), and decorative beam-edge cells defer after
+  line 140. The opposed-wave key is invalidated on reuse so the next affordable
+  frame rebuilds. Vegeta's full fight has no missed field-logic completions in
+  its battle, transformation or clash phases; the 28 remaining misses are in
+  its intro. Native sprite overflow, visible DMA and NMI-overrun checks are
+  clean, and the browser replay stays exact.
+- Add full-party Thanatos combat/walking captures, native held-picture tile
+  checks and girl transient analysis. These found no wrong native/FX cells,
+  no held-frame art changes and no one-frame girl transients. The Thanatos
+  phase-3 timing issue remains open (24/1440 and 15/800 CPU misses) and is
+  retained as an explicit gameplay-harness warning, not a passing zero-drop
+  claim. Unsafe event-AI deferral experiments were reverted after core party
+  checks caught timer starvation.
+
 ## SNES performance: zero drops in crowded gameplay (2026-10-28)
 
 - Replace iterative radial launch math with exact ExHiROM tables and add a

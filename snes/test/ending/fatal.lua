@@ -9,6 +9,24 @@ function test()
   local shards = E.watchShards()
   E.watchAudio()
   E.cue('fatal', 0x8001)
+  local uiFlashes = {}
+  local function uiWrite(_, value)
+    local age = H.r16(E.age)
+    local line = emu.getState()['ppu.scanline']
+    if H.r8(E.phase) == E.P.fatal and age >= 360 and age <= 905 and line >= 190 and line < 225 and (value & 4) ~= 0 then
+      if #uiFlashes < 16 then uiFlashes[#uiFlashes + 1] = string.format('%d:%02X@%d', age, value, line) end
+    end
+  end
+  emu.addMemoryCallback(uiWrite, emu.callbackType.write, 0x00212C, 0x00212C)
+  emu.addMemoryCallback(uiWrite, emu.callbackType.write, 0x80212C, 0x80212C)
+  emu.addEventCallback(function()
+    if FATAL_SPLIT and H.r8(E.phase) == E.P.fatal then H.w8(0x7E1D04, H.r8(0x7E1D04) | 0x20) end
+    local age = H.r16(E.age)
+    if H.r8(E.phase) == E.P.fatal and age >= 360 and age <= 905 and (H.r8(0x00212C) & 4) ~= 0 then
+      if #uiFlashes < 16 then uiFlashes[#uiFlashes + 1] = string.format('%d:%02X', age, H.r8(0x00212C)) end
+    end
+  end, emu.eventType.endFrame)
+  H.result('fatal_ui_flashes', uiFlashes)
   E.waitAge(200 + E.SHOT_LAG, 400)
   E.shot('fatal-200')
   H.result('status_200', H.r8(E.status))

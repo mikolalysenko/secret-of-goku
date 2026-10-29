@@ -29,14 +29,29 @@ function test()
   end
   Cells.measuring = true
   local frame = 0
+  local recorded = {}
   for buttons, n in SCRIPT:gmatch('([^,:]+):(%d+)') do
     for i = 1, tonumber(n) do
       frame = frame + 1
       if SWEEP_FROM then sweepY = SWEEP_FROM + (frame // (SWEEP_HOLD or 4)) % (SWEEP_TO - SWEEP_FROM + 1) end
       H.input = {}; for b in buttons:gmatch('[^+]+') do if b ~= 'none' then H.input[b] = true end end
       H.wait(1); Cells.frame()
+      if RECORD_FRAMES then
+        H.shot(string.format('t%05d', frame))
+        local o = {}
+        for e = 0, 127 do
+          local y = H.oam(e * 4 + 1)
+          if y ~= 0xE0 then
+            local a = H.oam(e * 4 + 3)
+            local hi = (H.oam(512 + (e >> 2)) >> ((e & 3) * 2)) & 3
+            o[#o + 1] = string.format('%03x%02x%03x%02x%d', H.oam(e * 4) | ((hi & 1) << 8), y, H.oam(e * 4 + 2) | ((a & 1) << 8), a, hi >> 1)
+          end
+        end
+        recorded[#recorded + 1] = {f=frame, f4=H.r8(0x7E00F4), w=0, sig='', oam=table.concat(o, ','), cg='', orbs={}}
+      end
     end
   end
   Cells.measuring = false; H.input = nil
+  if RECORD_FRAMES then H.result('actorMeta', recorded) end
   Cells.report()
 end

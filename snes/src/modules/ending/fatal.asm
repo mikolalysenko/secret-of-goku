@@ -224,6 +224,7 @@ frame_fatal:
 	STA.w !s_win
 	STA.w !s_cgadsub
 	STA.w !s_wobjsel
+	LDA.b #$01                ; keep BG3 off after the native HUD IRQ too
 	STA.w !s_bg3cut
 	LDA.b #$00                ; nothing until the card is in VRAM
 	LDX.w !s_dqhead
@@ -232,6 +233,7 @@ frame_fatal:
 	LDA.b #$01                ; BG1: the card
 .tm
 	STA.w !s_tm
+	STA.w !s_tmcut
 	REP #$20
 	; Start: back to the title (the cartridge's own reset entry)
 	LDA.l !core_pad_new
@@ -246,13 +248,14 @@ frame_fatal:
 	RTS
 
 ; The fatal views cover the dialogue too (planet-view view.fatal): no BG3,
-; no line-170 cut.
+; including after the native line-195 HUD split.
 fatal_layers:
 	SEP #$20
 	LDA.w !s_tm
 	AND.b #~$04
 	STA.w !s_tm
-	LDA.b #$00
+	STA.w !s_tmcut
+	LDA.b #$01
 	STA.w !s_bg3cut
 	REP #$20
 	RTS

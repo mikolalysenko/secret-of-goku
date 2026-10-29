@@ -1839,6 +1839,13 @@ fx_wave_edges:
 	LDX.w #4
 	LDY !d_turn
 	JSR fx_stamp
+	; The polygon and palm orb carry the wave. Its many decorative edge cells
+	; can wait for a lighter frame instead of delaying both fighters' poses.
+	JSR fx_frame_vline
+	CMP.w #140
+	BCC .edges
+	RTS
+.edges
 if defined("FX_TEST")
 	JSR fx_test_vline
 	STA.l !FXT_BOX+$BC           ; after the orb

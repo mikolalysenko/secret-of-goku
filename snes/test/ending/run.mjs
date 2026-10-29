@@ -113,6 +113,7 @@ async function fatalCheck(r,out){
   expect((r.status_905&0x20)!==0,'GAME OVER reached (complete status)');
   expect(r.done===1,'fatal timeline done flag');
   expect(r.lag_frames<=3,`lag ${r.lag_frames} frames`);
+  expect((r.fatal_ui_flashes??[]).length===0,`native UI reappeared during the fatal view (${(r.fatal_ui_flashes??[]).join(' ')})`);
   expect(r.shard_late===0,`fatal shard uploads missed ${r.shard_late} deadlines`);
   expect(r.shard_sprites_max<=32&&r.shard_slivers_max<=34,`fatal OBJ limits (${r.shard_sprites_max} sprites, ${r.shard_slivers_max} slivers)`);
   expect(r.overruns===0,`vblank overran ${r.overruns} times (${r.overrun_at})`);
@@ -505,6 +506,8 @@ const tests=[
   {name:'kai',check:kaiCheck},
   {name:'space',check:spaceCheck},
   {name:'fatal',check:fatalCheck},
+  {name:'fatal-dialogue',lua:'fatal',prelude:()=>`BUNDLE="preset__thanatos"\n`,check:fatalCheck},
+  {name:'fatal-split',lua:'fatal',prelude:()=>`BUNDLE="preset__thanatos"\nFATAL_SPLIT=true\n`,check:fatalCheck},
   {name:'depart',check:departCheck},
   {name:'vista',check:vistaCheck},
   {name:'flight',check:flightCheck},

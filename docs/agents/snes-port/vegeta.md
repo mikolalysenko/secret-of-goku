@@ -375,3 +375,20 @@ record the tick saw at `$32:6290`.
 - **flight.** `vb_flight_target` writes `!fl_tp_custom` every field frame
   after the tick (kind 3, species 46, position, terrain); please read it in
   the same frame or the next (it is rewritten each frame).
+
+## Crowded beam presentation — October 29, 2026
+
+Ordinary long waves can reuse a complete HDMA table after line 80 when the
+direction and colour still match, and the
+opposed-wave renderer can reuse one after line 120; the latter invalidates
+its key so the next affordable frame rebuilds. Decorative edge cells defer
+after line 140 while the polygon and palm orb remain. This avoids the 87-line
+polygon rebuild and the larger edge-assembly bursts on frames that cannot
+afford them, without changing damage, clash logic or either fighter's art
+buffering.
+
+`fight.lua` now records PPU sprite overflow, visible DMA, NMI overruns and
+true missed field-loop completions separately from intentional hit-stop.
+The full `combat-final` replay remains exact, with no missed logic in battle,
+transformation or clash; its 28 remaining misses are in the intro. The
+profiler's completion address is the actual FastROM `$80:B077` continuation.
