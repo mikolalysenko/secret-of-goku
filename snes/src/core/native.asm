@@ -1325,6 +1325,26 @@ core_native_graphics_words_1600:
 	RTS
 endif
 
+; Damage and death always retain full native AI service. Other healthy actors
+; use phase one of four while local flight is active; ground behavior stays
+; exact for launch and deflection.
+core_ai_cadence:
+	LDA.w $E1F1,X
+	BNE .service                 ; damage always keeps the full cadence
+	LDA.w $E190,X
+	BMI .service                 ; and death/launch processing
+	LDA.w $D900
+	AND.b #1
+	BEQ .service
+	LDA $F4
+	AND.b #$03
+	CMP.b #$01
+	BNE .skip
+.service
+	JML $81D942
+.skip
+	RTL
+
 ; C1:2710: highest set bit of X, or $00FF for zero. X returns bit+1
 ; (zero for empty), Y/DB/D/P are preserved, except NZ follows PLD as in
 ; retail. The original shifts all 16 bits even for an empty target mask;

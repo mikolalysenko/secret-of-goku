@@ -11,6 +11,18 @@
 destroy_field_frame:
 	REP #$30
 	JSR dst_vline : STA.w !d_vstart      ; the background work's budget
+	CMP.w #180
+	BCC .check
+	RTL                                  ; planning resumes on a lighter frame
+.check
+	LDA.w $0056
+	AND.w #$00FF
+	BNE .normal
+	LDA.w $D8BE
+	AND.w #$00FF
+	BEQ .normal
+	RTL
+.normal
 if not(defined("DESTROY_IDLE_SLOW"))
 	; Each step's own idle test, ahead of its call: the same map and
 	; initialised state; no event now and none that just ended; no debug
@@ -52,10 +64,15 @@ destroy_late_frame:
 if not(defined("DESTROY_BEAMS_SYNC"))
 	REP #$30
 if not(defined("DESTROY_IDLE_SLOW"))
-	LDA.l !hp_id : BEQ +                 ; no beam band or barrier box left
+	LDA.l !hp_id : BEQ .done             ; no beam band or barrier box left
 endif
+	JSR dst_vline
+	SEC : SBC.w !d_vstart : BPL +
+	CLC : ADC.w #262
++	CMP.w #8 : BCS .done                ; this frame is already too busy
 	JSR dst_hit_continue
-+	LDA.w #0 : STA.l !hp_worked
+.done
+	LDA.w #0 : STA.l !hp_worked
 endif
 	RTL
 

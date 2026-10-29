@@ -52,6 +52,7 @@
 !CORE_SAFE_END   = $0A0
 !core_scene_owner = !CORE_SAFE+$01C ; word: owner of !SRAM_WORK_SCENE (core_scene_claim; 0 = free)
 !core_hp_pending = !CORE_SAFE+$01E ; byte: native HP-number redraw queued by field status work
+!core_pad_probe = !CORE_SAFE+$01B ; byte: polls until the next absent-multitap probe
 !core_world_done = !CORE_SAFE+$01A  ; byte: this world vblank ran the game's frame work ($EC bit 0 at
                                     ; 00:88FB; written by the world module's hook there, which owns the site)
 !core_safe_magic = !CORE_SAFE+$018  ; word 'CS' while the block is valid; any frame
@@ -130,6 +131,10 @@
 !core_enemy_magic = !SRAM_WORK_ENEMY+$06
 !CORE_ENEMY_MAGIC = $5145
 !core_native_xy = !RAM_CORE_EXT+$1BC ; word: native OBJ anchor; frame thread only
+!core_tp_act = !SRAM_WORK_FLIGHT+$350 ; flight's teleport state (read-only in core)
+!core_tp_age = !core_tp_act+2
+!core_tp_queued = !core_tp_act+$0C
+!core_fx_pbig = $31783E         ; bits 3-4: required native pre-uploads pending
 
 !CORE_DMA_MAX      = 8
 !CORE_DMA_BUDGET   = $0C00           ; bytes per frame accepted by core_queue_vram
@@ -350,6 +355,18 @@ core_frame_end:
 ; The $80 mirror has the same WRAM/IO mapping as $00 and fast ROM fetches.
 ; Each native RTS goes through the cartridge's RTL at B294, returning to
 ; this bank even if a module's continuation switches back to bank $00.
+; Native event/dialogue work waits for teleport's movement and camera to settle.
+; Its event state is unchanged, so the next ordinary field frame resumes it.
+core_field_event:
+	LDA.l !core_tp_act
+	ORA.l !core_tp_queued
+	BEQ .native
+	LDA $D0
+	BEQ .native
+	RTL
+.native
+	JML $82C786
+
 core_field_scroll:
 	PHK
 	PER .scroll-1
@@ -506,6 +523,7 @@ endif
 	JSR core_flush_auto
 	JSR core_native_hp_nmi
 .done
+	JSL fx_preupload           ; required native cells land after optional FX work
 	PLB
 	PLP
 	SEP #$20
@@ -564,7 +582,22 @@ core_actor_cells:
 	REP #$30
 	LDA.l !core_actor_hold
 	CMP.l !core_frame
+	BNE .check_cell
+	BRA .held
+.check_cell
+	; A palette/size-changing Goku cell cannot wait for a lighter stream:
+	; its colours are already in this NMI's CGRAM transfer. Reserve room for
+	; the matching cell even when the pose was requested after goku_frame.
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .stream
+	LDA.l $7ED782
+	CMP.w #$FFFF
+	BEQ .stream
+	LDA.l $7ED785
+	AND.w #$0010
 	BNE .stream
+.held
 	SEP #$20                       ; held: the streamer's VMAIN only
 	LDA.b #$80
 	STA.l $002115
@@ -823,18 +856,42 @@ core_flush_vram:
 	JMP .end
 +
 	LDA.l !core_dma_table+6,X       ; scanlines needed: size/160 + 1
-	LDY.w #$0000
+	AND.w #$001F
+	BNE .div
+	LDA.l !core_dma_table+6,X
+	LSR : LSR : LSR : LSR : LSR
+	TAY
+	PHX
+	TYX
+	LDA.l core_dma_lines,X
+	PLX
+	AND.w #$00FF
+	BRA .lines
 .div
+	LDA.l !core_dma_table+6,X
+	LDY.w #$0000
+.div_loop
 	INY
 	SEC : SBC.w #!CORE_LINE_BYTES
-	BCS .div
+	BCS .div_loop
 	TYA
+.lines
 	STA.l !core_tmp0
 	JSR core_vcount
 	CMP.w #225
 	BCC .defer                      ; not in vblank
 	CLC : ADC.l !core_tmp0
+	TAY
+	LDA.l !core_fx_pbig
+	AND.w #$0018
+	BEQ .ordinary
+	TYA                             ; reserve two lines for required native art
+	CMP.w #257
+	BRA .fits
+.ordinary
+	TYA
 	CMP.w #!CORE_VBLANK_LAST+1
+.fits
 	BCS .defer
 	PHX
 	LDA.l !core_tmp2
@@ -876,6 +933,10 @@ core_flush_vram:
 
 core_dma_bit:
 	db $01,$02,$04,$08,$10,$20,$40,$80
+core_dma_lines:
+	for i = 0..96
+		db ((!i*32)/!CORE_LINE_BYTES)+1 ; floor(bytes/lines) + 1, exactly
+	endfor
 
 ; Flush on a DMA channel no HDMA channel uses: 7, 6, 5 or 4, checked against
 ; the game's HDMA mask $2C (world flight also runs HDMA on channels 0-5).

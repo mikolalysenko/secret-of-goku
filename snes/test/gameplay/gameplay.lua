@@ -53,7 +53,7 @@ function test()
     end,emu.callbackType.exec,p[2],p[2])
   end
   local parts = {}
-  local hot, inside = {}, false
+  local hot, inside,nmiHot,nmiInside = {}, false,{},false
   local misses, overflows = {}, 0
   local nmiStart, nmiOverruns, maxNmi = nil, 0, 0
   local nmiParts, lateNmis = {}, {}
@@ -62,6 +62,13 @@ function test()
   local forms,sounds={},{}
   local maxPower,auraFrames,maxAuraSprites,auraBgWrites=0,0,0,0
   local auraBgWriters={}
+  local fxTrace={}
+  if (FX_DRAW_ADDR or 0)~=0 then emu.addMemoryCallback(function()
+    if not measuring then return end
+    local s=emu.getState()
+    fxTrace[#fxTrace+1]={frame=H.frame,kind=H.r8(0x7E0000+((s['cpu.d']+0x18)&0xFFFF)),
+      line=s['ppu.scanline'],act=H.r8(0x7ED814),phase=H.r8(0x7E0056)}
+  end,emu.callbackType.exec,FX_DRAW_ADDR,FX_DRAW_ADDR) end
   local x0,y0=H.r16(0x7EE002),H.r16(0x7EE004)
   local maxTravel=0
   local flightDirection,flightCorridorTurns=1,0
@@ -125,6 +132,12 @@ function test()
     emu.addMemoryCallback(function(addr)
       if inside then local k=string.format('%06X',addr); hot[k]=(hot[k] or 0)+1 end
     end,emu.callbackType.exec,0,0xFFFFFF)
+    emu.addMemoryCallback(function() nmiInside=measuring and (not some or PROFILE_FRAMES[H.frame]==true) end,emu.callbackType.exec,0x00C0A8,0x00C0A8)
+    emu.addMemoryCallback(function() nmiInside=false end,emu.callbackType.exec,0x00C16F,0x00C16F)
+    emu.addMemoryCallback(function() nmiInside=false end,emu.callbackType.exec,0x80C16F,0x80C16F)
+    emu.addMemoryCallback(function(addr)
+      if nmiInside then local k=string.format('%06X',addr); nmiHot[k]=(nmiHot[k] or 0)+1 end
+    end,emu.callbackType.exec,0,0xFFFFFF)
   end
   for _, p in ipairs(SPANS) do
     timing[p[1]] = {sum=0, n=0, max=0}
@@ -142,7 +155,10 @@ function test()
       end
     end
     emu.addMemoryCallback(spanDone,emu.callbackType.exec,p[3],p[3])
-    if p[1]=='nmi_native' then emu.addMemoryCallback(spanDone,emu.callbackType.exec,p[3]|0x800000,p[3]|0x800000) end
+    if p[1]=='nmi_tail' then emu.addMemoryCallback(function()
+      if measuring then active[p[1]] = emu.getState()['masterClock'] end
+    end,emu.callbackType.exec,p[2]|0x800000,p[2]|0x800000) end
+    if p[1]=='nmi_native' or p[1]=='nmi_tail' then emu.addMemoryCallback(spanDone,emu.callbackType.exec,p[3]|0x800000,p[3]|0x800000) end
   end
   emu.addMemoryCallback(function()
     if measuring then
@@ -253,7 +269,7 @@ function test()
   H.result('destroyPasses',destroyPasses);H.result('destroyRepeatFrames',destroyRepeatFrames)
   H.result('gfxDmaCopies',gfxDmaCopies);H.result('gfxDmaOverruns',gfxDmaOverruns);H.result('maxGfxDmaLines',maxGfxDmaLines)
   H.result('gfxDmaPostHudCopies',gfxDmaPostHudCopies)
-  H.result('nativeHot',hot)
+  H.result('nativeHot',hot);H.result('nmiHot',nmiHot)
   H.result('misses',misses); H.result('spriteOverflowFrames',overflows)
   H.result('missedVblanks',#misses); H.result('nmiOverruns',nmiOverruns); H.result('maxNmiLines',maxNmi)
   H.result('lateNmis',lateNmis)
@@ -264,6 +280,7 @@ function test()
   H.result('forms',forms);H.result('sounds',sounds);H.result('maxPower',maxPower)
   H.result('grassCuts',grassCuts);H.result('auraFrames',auraFrames);H.result('maxAuraSprites',maxAuraSprites)
   H.result('auraBgWrites',auraBgWrites);H.result('auraBgWriters',auraBgWriters);H.result('chargeTailVoices',chargeTailVoices)
+  if (FX_DRAW_ADDR or 0)~=0 then H.result('fxTrace',fxTrace) end
   H.result('bank',emu.getState()['cpu.k'])
   H.shot('end')
 end

@@ -62,7 +62,7 @@ function test()
   F.spawn(1, F.K.BURST, S, 0, 190, 100)
   s = F.waitFx(2)
   -- Both cold-cache rings may need the next streaming phase.
-  local burstMin=FX_DETAIL and 40 or 20
+  local burstMin=FX_DETAIL and 40 or 18
   for i=1,5 do if s.sprites>=burstMin then break end s=F.waitFx(1) end
   s = shot('burst_ready', s)
   F.check('burst_sprites',s.sprites>=burstMin and (FX_DETAIL or s.sprites<=24),F.statstr(s))

@@ -472,6 +472,28 @@ core_oam_hide:
 	STA.w $0800,X
 	RTL
 
+core_oam_hide_pending:
+	LDX.w #0
+.loop
+	LDA.w $0802,X
+	AND.w #$01FE
+	CMP.w #$01AC
+	BEQ .hide
+	CMP.w #$01AE
+	BEQ .hide
+	CMP.w #$0188
+	BEQ .hide
+	CMP.w #$018A
+	BNE .next
+.hide
+	LDA.w #$E0FF
+	STA.w $0800,X
+.next
+	INX : INX : INX : INX
+	CPX.w #512
+	BCC .loop
+	RTS
+
 ; Field commit: insert staged front sprites, record the new end so the
 ; game's next C0:BCAB hides our slots.
 ; Enter an unrolled descending word copy at its requested length. Each
@@ -682,6 +704,11 @@ core_oam_commit_ground:
 endif
 core_oam_commit_field:
 core_oam_commit_rotated:
+	LDA.l !core_fx_pbig
+	AND.w #$0018
+	BEQ .normal
+	JSR core_oam_hide_pending
+.normal
 	SEP #$20
 	LDA.b #0
 	STA.l !core_oam_first

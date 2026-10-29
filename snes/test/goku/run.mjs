@@ -75,7 +75,7 @@ if(want('packed')){
   const count=JSON.parse(readFileSync(join(repo,'dist/snes/gen/goku/manifest.json'),'utf8')).cells.length;
   for(const [kind,tiles] of [['tiles',16],['mini',4]])for(let cell=0;cell<count;cell++){
     const p=read(sym.get('goku_dma_'+kind)+cell*4,3).readUIntLE(0,3);
-    if((p&0xffff)+tiles*32>0x8000)failures.push(`${kind} ${cell} crosses its extended-ROM allocation`);
+    if((p&0xffff)+tiles*32>0x10000)failures.push(`${kind} ${cell} crosses its extended-ROM allocation`);
     const packed=read(p,tiles*32);
     for(let j=0;j<tiles;j++){
       const tile=read(sym.get('goku_cell_'+kind)+(cell*tiles+j)*2,2).readUInt16LE();

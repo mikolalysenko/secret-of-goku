@@ -247,8 +247,52 @@ ui_radio_tick:
 	LDA.w !ui_charge_in&$FFFF
 	STA.w !ui_charge_seen&$FFFF
 	STZ.w !ui_charge_in&$FFFF
+	LDA.w $0056                       ; independent projectiles are crowded too
+	AND.w #$00FF
+	CMP.w #2
+	BNE .action
+	LDA.w !goku_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_CHARGE
+	BEQ .action
+	LDA.w $D8BE
+	AND.w #$00FF
+	BEQ .action
+	RTS
+.action
+	; Attacks and transformations can defer radio policy and presentation on
+	; crowded native phases. Charge input still advances exactly once, and
+	; charge warnings retain their native cadence. Queued messages remain
+	; intact and resume on the first lighter phase.
+	LDA.w !goku_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_PUNCH
+	BEQ .attack
+	CMP.w #!GOKU_K_BEAM
+	BEQ .attack
+	CMP.w #!GOKU_K_BLAST
+	BEQ .attack
+	CMP.w #!GOKU_K_FOCUS
+	BEQ .attack
+	CMP.w #!GOKU_K_TRANSFORM
+	BNE .normal
+.attack
+	LDA.w $0056
+	AND.w #$00FF
+	CMP.w #2
+	BCS .normal
+	RTS
+.normal
+	LDA.w $0056                       ; preserve the idle fast path's A input:
+	AND.w #$00FF                      ; phase, or the action on native phase 1
+	CMP.w #1
+	BNE .idle_check
+	LDA.w !goku_act
+	AND.w #$00FF
+.idle_check
 	; Idle fast path: nothing shown or queued, no charge, no cooldown and
 	; no first-flight banter pending: the browser's tick() changes nothing.
+	ORA.w !ui_charge_seen&$FFFF
 	ORA.w !ui_cur&$FFFF
 	ORA.w !ui_qn&$FFFF
 	ORA.w !ui_cool&$FFFF

@@ -56,7 +56,7 @@ endif
 %orig4($C0B0BF, $01BFE022)
 %hijack_jsl($C0B0BF, $81BFE0, 4, core)
 %orig4($C0B08C, $02C78622)
-%hijack_jsl($C0B08C, $82C786, 4, core)
+%hijack_jsl($C0B08C, core_field_event, 4, core)
 %orig4($C0B0C3, $02BAD622)
 %hijack_jsl($C0B0C3, $82BAD6, 4, core)
 
@@ -365,7 +365,7 @@ pullpc
 %orig4($C0D7AA, $01B93E22)
 %hijack_jsl($C0D7AA, $81B93E, 4, core)
 %orig4($C0F8E9, $01D94222)
-%hijack_jsl($C0F8E9, $81D942, 4, core)
+%hijack_jsl($C0F8E9, core_ai_cadence, 4, core)
 %orig4($C0F1EC, $01818F22)
 %hijack_jsl($C0F1EC, $81818F, 4, core)
 %orig4($C0F9E5, $01D52A22)

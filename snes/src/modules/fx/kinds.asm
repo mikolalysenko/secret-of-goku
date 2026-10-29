@@ -28,6 +28,24 @@ fx_emit_here:
 ; FX_IMPACT: one native spark, frame min(5,age/2), turned to the hit.
 ; Keep the contact bright without three overlapping sprite assemblies.
 fx_k_impact:
+	LDA.l !fx_draws+!D_KIND
+	AND.w #$00FF
+	CMP.w #!FX_AURA
+	BNE .start
+	LDA.w !core_oam_cursor&$FFFF
+	CLC
+	ADC.w !core_oam_front_n&$FFFF
+	CMP.w #17*4
+	BCC .start
+	RTS
+.start
+	; The beam and native hit remain when a crowded frame reaches line 200;
+	; only this additional contact spark yields its drawing.
+	JSR fx_vline
+	CMP.w #200
+	BCC .draw
+	RTS
+.draw
 	LDA.w #!FX_E_FRONT
 	JSR fx_depth
 	LDA.w #!FX_G_IMPACT
@@ -80,6 +98,11 @@ endif
 ; three overlapping orbs for visual comparisons. Shot speed, range and
 ; collisions are unchanged; basic shots must leave CPU and OBJ room for Goku.
 fx_k_ki:
+	; Late crowded frames keep the actors and other effects; an extra shot
+	; yields its drawing. Projectile motion and collisions remain native.
+	JSR fx_vline
+	CMP.w #180
+	BCS .culled
 	; In a crowded picture, extra shots yield before they push a flame or a
 	; party sprite over the PPU's per-line sliver budget. Gameplay projectiles
 	; and collisions are independent of this drawing bound.
@@ -699,6 +722,10 @@ fx_k_sparks:
 ; FX_ORB: charge orb frame !C_A (0-4) at the palm; FX_F_GOKU anchors it to
 ; goku_api_hand. In front unless facing up (!C_DIR = 3).
 fx_k_orb:
+	; The palm orb is optional on a late frame; the body aura remains visible.
+	JSR fx_vline
+	CMP.w #190
+	BCS .done
 	LDA.w #!FX_E_FRONT
 	JSR fx_depth
 	JSR fx_depth_up
@@ -724,6 +751,8 @@ fx_k_orb:
 	LDX !d_cur+!C_A
 	LDY.w #$0000
 	JMP fx_stamp
+.done
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; FX_AURA (ki-aura.js drawKiAura): !fx_style tone (0 blue, 1 gold, 2 pink),

@@ -39,33 +39,11 @@
 
 ; C2:BF7C has just prepared a weapon effect's fifth piece. The native
 ; streamer may not send it for four more vblanks, although its sprite is
-; already visible. Queue the prepared cells now for the shared regions used
-; by the two companions; the native phase-4 stream remains the fallback when
-; the core queue is full. Entered M8/X16, with the original helper's outputs.
+; already visible. Send the prepared cells in the next pre-upload instead of
+; competing with the full shared queue. Entered M8/X16, with the original
+; helper's outputs.
 %orig4($C2BF7C, $20E08DFE)
 %hijack($C2BF7C, fx_native_weapon_ready, 4, fx)
-
-macro fx_native_weapon_cell(vram, source)
-	LDA.w #<vram>
-	LDX.w #64
-	LDY.w #<source>
-	JSL core_queue_vram
-	BCC ?queued
-	JMP .done
-?queued:
-endmacro
-
-; An active Analyzer lease keeps its cells until the ordinary native-claim
-; pass. Free and FX-owned entries are safe for the early native upload.
-macro fx_native_weapon_unleased(entry)
-	LDA.l !fx_ccell+(<entry>*2)
-	CMP.w #$8000
-	BCC ?ok
-	CMP.w #$FFFE
-	BCS ?ok
-	JMP .done
-?ok:
-endmacro
 
 fx_native_weapon_ready:
 	; Remember the actor offset without changing the native helper's inputs.
@@ -91,7 +69,7 @@ fx_native_weapon_ready:
 	PHX
 	PHY
 	PHB
-	PEA $7E7E : PLB : PLB          ; core_queue_vram requires DB = $7E
+	PEA $7E7E : PLB : PLB          ; the lease/cache routines require DB = $7E
 	LDA.l !fx_s
 	CMP.w #$0200
 	BNE +
@@ -100,40 +78,85 @@ fx_native_weapon_ready:
 	BEQ .sprite
 	JMP .done
 .sprite
-	LDA.l !fx_cbudget
-	BNE +
-	JMP .done                  ; a crowded native phase keeps the old stream
-+	%fx_native_weapon_unleased(13)
-	%fx_native_weapon_unleased(14)
-	SEP #$20
-	LDA.b #$7E
-	STA.w !core_scratch&$FFFF
-	REP #$20
-	%fx_native_weapon_cell($7AC0, $4400)
-	%fx_native_weapon_cell($7BC0, $4440)
-	%fx_native_weapon_cell($7AE0, $4480)
-	%fx_native_weapon_cell($7BE0, $44C0)
-	BRA .done
-.girl
-	LDA.l !fx_cbudget
-	BNE +
+	LDA.w #$6000                  ; native upload wins: forget any FX ownership
+	JSR fx_native_forget
+	LDA.l !fx_pbig
+	ORA.w #$0050
+	STA.l !fx_pbig
 	JMP .done
-+	%fx_native_weapon_unleased(9)
-	%fx_native_weapon_unleased(10)
-	SEP #$20
-	LDA.b #$7E
-	STA.w !core_scratch&$FFFF
-	REP #$20
-	%fx_native_weapon_cell($7880, $4200)
-	%fx_native_weapon_cell($7980, $4240)
-	%fx_native_weapon_cell($78A0, $4280)
-	%fx_native_weapon_cell($79A0, $42C0)
+.girl
+	LDA.w #$0600                  ; native upload wins: forget any FX ownership
+	JSR fx_native_forget
+	LDA.l !fx_pbig
+	ORA.w #$0028
+	STA.l !fx_pbig
 .done
 	PLB
 	PLY
 	PLX
 	PLA
 	PLP
+	RTL
+
+; Required fifth-piece uploads, after the shared FX/core queues. Two pending
+; bits in fx_pbig are free (polygon state uses only bits 0-2). Any DB, M16/X16.
+macro fx_native_pre_cell(vram, source)
+	LDA.w #<vram>
+	STA $2116
+	LDA.w #<source>
+	STA $4372
+	LDA.w #64
+	STA $4375
+	LDA.w #$0080
+	STA $420B
+endmacro
+
+fx_preupload:
+	LDA.l !fx_pbig
+	AND.w #$0060
+	BEQ .send
+	LDA.l !fx_pbig
+	AND.w #$FF9F
+	STA.l !fx_pbig                 ; the crowded NMI hides this effect instead
+	RTL
+.send
+	LDA.l !fx_pbig
+	AND.w #$0018
+	BEQ .done
+	PHA
+	LDA.l !fx_pbig
+	AND.w #$FFE7
+	STA.l !fx_pbig
+	LDA.w #$1801
+	STA $4370
+	LDA.w #$007E
+	STA $4374
+	PLX
+	TXA
+	BIT.w #$0010
+	BNE .sprite
+	TXA
+	BIT.w #$0008
+	BEQ .done
+	JMP .girl
+.done
+	RTL
+.sprite
+	%fx_native_pre_cell($7AC0, $4400)
+	%fx_native_pre_cell($7BC0, $4440)
+	%fx_native_pre_cell($7AE0, $4480)
+	%fx_native_pre_cell($7BE0, $44C0)
+	TXA
+	BIT.w #$0008
+	BEQ .finished
+	JMP .girl
+.finished
+	RTL
+.girl
+	%fx_native_pre_cell($7880, $4200)
+	%fx_native_pre_cell($7980, $4240)
+	%fx_native_pre_cell($78A0, $4280)
+	%fx_native_pre_cell($79A0, $42C0)
 	RTL
 
 ; A = phase of the coming vblank (0-4).

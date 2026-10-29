@@ -23,7 +23,42 @@
 ; C0:951D: JSL $CFFE00 -> JSL core_pad_bios. Caller state: D = 0, M8;
 ; returns A from the BIOS (low byte $FF = multitap present) and P unchanged.
 core_pad_bios:
+	PHP
+	; Once no multitap is present, ordinary polls can use the same auto-read
+	; registers as the BIOS's no-multitap branch. Probe again after 255 polls
+	; for hotplugging; a present multitap always takes the original serial
+	; path so pads 2/3 stay current on every poll.
+	LDA.l !core_pad_probe
+	BEQ .bios
+	DEC
+	STA.l !core_pad_probe
+.wait_ready
+	LDA.l $004212                  ; as FE70: never sample an active auto-read
+	AND.b #1
+	BNE .wait_ready
+	REP #$20
+	LDA.l $004218
+	STA.l $7E0042
+	LDA.l $00421A
+	STA.l $7E0044
+	LDA.w #$0000
+	STA.l $7E0046
+	PLP
+	BRA .filter
+.bios
+	PLP
 	JSL $CFFE00
+	PHP
+	CMP.b #$FF
+	BEQ .present
+	LDA.b #255
+	BRA .probe
+.present
+	LDA.b #0
+.probe
+	STA.l !core_pad_probe
+	PLP
+.filter
 	PHP
 	REP #$30
 	PHA
@@ -34,6 +69,9 @@ core_pad_bios:
 	DEC
 	STA.l !core_pad_reads
 	LDA.l !core_pad_mask_live
+	ORA.l !core_pad_inject_live
+	BEQ .filtered
+	LDA.l !core_pad_mask_live
 	EOR.w #$FFFF
 	AND.l $7E0042
 	ORA.l !core_pad_inject_live
@@ -41,6 +79,7 @@ core_pad_bios:
 	LDA.w #$0000
 	STA.l !core_pad_inject_live
 .seen
+.filtered
 	; Flight chords must hide altitude buttons on their very first read.
 	; A frame-latched mask alone arrives after native descent/landing has
 	; already consumed L+B (or ascent has consumed L+A).

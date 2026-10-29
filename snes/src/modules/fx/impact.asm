@@ -14,6 +14,24 @@
 ; Both draw in the spark's own class (gold for FX_F_GOLD) from the shared
 ; cells of impact-art.js.
 fx_k_hit:
+	LDA.l !fx_draws+!D_KIND
+	AND.w #$00FF
+	CMP.w #!FX_AURA
+	BNE .start
+	LDA.w !core_oam_cursor&$FFFF
+	CLC
+	ADC.w !core_oam_front_n&$FFFF
+	CMP.w #17*4
+	BCC .start
+	JMP .done
+.start
+	; Keep the native hit and palette flash; optional hit assemblies yield when
+	; the beam/actor work has already carried the frame past line 200.
+	JSR fx_vline
+	CMP.w #200
+	BCC .draw
+	RTS
+.draw
 	LDA.l !fx_frame
 	SEC
 	SBC !d_cur+!C_B
@@ -301,6 +319,15 @@ fx_warm:
 ; brings the rest). The palettes their classes took are given back: no
 ; sprite shows them.
 fx_k_prep:
+	LDA.w !goku_act               ; a punch has no contact to draw yet: its
+	AND.w #$00FF                  ; cold cells can wait for a lighter frame
+	CMP.w #!GOKU_K_PUNCH
+	BNE .upload
+	JSR fx_vline
+	CMP.w #120
+	BCC .upload
+	RTS
+.upload
 	LDA.l !fx_palfree
 	STA !d_ks+0
 	LDA.l !fx_clspal

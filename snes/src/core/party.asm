@@ -1,13 +1,9 @@
 ; Companion status runs on its fixed native tick. Delay only the following
-; CPU AI/animation during ki/charge/teleport until the frame can afford it. Each
-; job finishes within four field updates, before its next five-frame tick.
+; CPU AI/animation during ki/charge/teleport until the frame can afford it. Jobs
+; coalesce while crowded; no age deadline may force work into a missed vblank.
 if not(defined("CORE_PARTY_BUDGET_LINE"))
 !CORE_PARTY_BUDGET_LINE = 90
 endif
-if not(defined("CORE_PARTY_MAX_AGE"))
-!CORE_PARTY_MAX_AGE = 4
-endif
-assert !CORE_PARTY_MAX_AGE < 5, "companion work must finish before its next native tick"
 
 ; M16 on return, X/Y/DB/D preserved. New games, successful loads, mode
 ; changes and title/boot discard work from the previous actor context.
@@ -171,7 +167,28 @@ core_party_work:
 	SEP #$20
 	REP #$10
 	LDA.l !core_party_pending
-	BEQ .done
+	BNE +
+	JMP .done
++
+	; Target selection and arrival/camera frames are the expensive parts of a
+	; teleport. Run queued companion work in its light middle frames instead;
+	; the chord guard also covers the press frame before flight starts it.
+	LDA.l !core_pad+1
+	AND.b #$A0
+	CMP.b #$A0
+	BNE +
+	JMP .done
++
+	LDA.l !core_tp_queued
+	BEQ +
+	JMP .done
++
+	LDA.l !core_tp_act
+	BEQ .context
+	LDA.l !core_tp_age
+	CMP.b #4
+	BCS .done
+.context
 	JSR core_party_context
 	BCS +
 	JMP core_party_reset
@@ -198,8 +215,8 @@ core_party_work:
 	LDA.l $7EE02C,X
 	BNE .drop
 	PLA
-	CMP.b #!CORE_PARTY_MAX_AGE
-	BCS .run
+	LDA.l !core_tp_act
+	BNE .run                       ; light teleport middle frame, selected above
 	JSR core_vcount
 	CMP.w #!CORE_PARTY_BUDGET_LINE
 	BCS .done

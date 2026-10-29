@@ -144,6 +144,38 @@ if defined("UI_TEST")
 	JSR ui_test_poll
 endif
 	JSR ui_radio_tick
+	LDA.w $0056                       ; an independent projectile is crowded too
+	AND.w #$00FF
+	CMP.w #2
+	BNE .action
+	LDA.w !goku_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_CHARGE
+	BEQ .action
+	LDA.w $D8BE
+	AND.w #$00FF
+	BEQ .action
+	RTL
+.action
+	LDA.w !goku_act                   ; attacks can present on a lighter native
+	AND.w #$00FF                      ; phase; charge warnings keep their cadence
+	CMP.w #!GOKU_K_PUNCH
+	BEQ .crowded
+	CMP.w #!GOKU_K_BEAM
+	BEQ .crowded
+	CMP.w #!GOKU_K_BLAST
+	BEQ .crowded
+	CMP.w #!GOKU_K_FOCUS
+	BEQ .crowded
+	CMP.w #!GOKU_K_TRANSFORM
+	BNE .present
+.crowded
+	LDA.w $0056
+	AND.w #$00FF
+	CMP.w #3
+	BCS .present
+	RTL
+.present
 	JSR ui_window_update
 	JSR ui_place_frame
 	JMP ui_field_idle

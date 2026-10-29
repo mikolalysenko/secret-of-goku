@@ -28,10 +28,49 @@ fl_tp_start:
 	STA.l !fl_tp_ox
 	LDA $E004
 	STA.l !fl_tp_oy
+	; Target selection can scan several enemies. Start it on an affordable
+	; frame; the chord stays pending instead of forcing a missed vblank.
+	SEP #$20
+	LDA.l $00213F
+	LDA.l $002137
+	LDA.l $00213D
+	XBA
+	LDA.l $00213D
+	AND.b #$01
+	XBA
+	REP #$20
+	STA.w !fl_t0
+	LDA.l !fl_tp_spot_on
+	ASL
+	ASL
+	ASL
+	ASL
+	CLC
+	ADC.w #100                   ; retry with 16 more lines each deferred frame
+	CMP.w !fl_t0
+	BCS .search
+	LDA.l !fl_tp_spot_on
+	INC
+	STA.l !fl_tp_spot_on
+	LDA.w #1
+	STA.l !fl_tp_queued
+	CLC
+	RTS
+.search
 	JSR fl_tp_pick
-	BCS +
+	BCS .picked
+	CMP.w #$FFFF
+	BEQ .pending
+	LDA.w #0
+	STA.l !fl_tp_queued
+	STA.l !fl_tp_spot_on
 	RTS                          ; no reachable target
-+	STA.l !fl_tp_target          ; slot index
+.pending
+	LDA.w #1
+	STA.l !fl_tp_queued
+	RTS                          ; an incremental search continues next frame
+.picked
+	STA.l !fl_tp_target          ; slot index
 	TAX
 	JSR fl_tp_entity
 	LDA.l !fl_tp_e_species
@@ -109,6 +148,21 @@ fl_tp_advance:
 	LDA.l !fl_tp_age
 	CMP.w #4
 	BCC .end
+	SEP #$20
+	LDA.l $00213F
+	LDA.l $002137
+	LDA.l $00213D
+	XBA
+	LDA.l $00213D
+	AND.b #$01
+	XBA
+	REP #$20
+	CMP.w #100
+	BCC .finish
+	LDA.w #4
+	STA.l !fl_tp_age
+	BRA .end
+.finish
 	JSR fl_tp_finish
 .arrived
 	LDA.w !fl_hook
@@ -296,9 +350,10 @@ fl_tp_pick:
 	JMP .next
 .nearest
 	; nearest first: repeatedly take the nearest untried foe (ties: lower
-	; slot, as the browser's stable sort) until one has a landing
-	LDA.w #$0000
-	STA.l !fl_tp_tried
+	; slot, as the browser's stable sort) until one has a landing. A pending
+	; search resumes with its tried mask; a new one starts empty.
+	LDA.l !fl_tp_tried
+	BNE .near
 .near
 	LDA.w #$FFFF
 	STA.l !fl_tp_best_d
@@ -341,42 +396,73 @@ fl_tp_pick:
 	STA.l !fl_tp_tried
 	JSR fl_tp_entity
 	JSR fl_tp_landing
-	BCC .near
+	BCC .near_wait
+	LDA.w #0
+	STA.l !fl_tp_tried
 	LDA.l !fl_tp_best_i
 	SEC
 	RTS
+.near_wait
+	LDA.w #0
+	STA.l !fl_tp_spot_on
+	LDA.w #$FFFF
+	CLC
+	RTS
 .none
+	LDA.w #0
+	STA.l !fl_tp_tried
 	CLC
 	RTS
 .next
-	; slots after the last one, then from the first
+	; One candidate per frame. The slot order and verdicts are unchanged, but
+	; several unreachable enemies no longer form one unbounded search burst.
+	LDA.l !fl_tp_tried
+	BNE .resume
+	LDA.l !fl_tp_last
 	INC
-	STA.l !fl_tp_best_i
-	LDA.w #10                    ; at most every slot once
-	STA.l !fl_tp_best_d
-.try
-	LDA.l !fl_tp_best_i
 	CMP.w #13
 	BCC +
 	LDA.w #3
-	STA.l !fl_tp_best_i
-+	TAX
-	JSR fl_tp_entity
-	BCC .nexti
-	JSR fl_tp_landing
-	BCC .nexti
++	STA.l !fl_tp_best_i
+	LDA.w #10
+	STA.l !fl_tp_best_d
+.resume
 	LDA.l !fl_tp_best_i
-	SEC
-	RTS
-.nexti
+	TAX
+	JSR fl_tp_entity
+	BCC .miss
+	JSR fl_tp_landing
+	BCS .found_next
+.miss
+	LDA.l !fl_tp_best_i
+	JSR fl_tp_bit
+	ORA.l !fl_tp_tried
+	STA.l !fl_tp_tried
 	LDA.l !fl_tp_best_i
 	INC
-	STA.l !fl_tp_best_i
+	CMP.w #13
+	BCC +
+	LDA.w #3
++	STA.l !fl_tp_best_i
 	LDA.l !fl_tp_best_d
 	DEC
 	STA.l !fl_tp_best_d
-	BNE .try
+	BNE .more
+	LDA.w #0
+	STA.l !fl_tp_tried
 	CLC
+	RTS
+.more
+	LDA.w #0
+	STA.l !fl_tp_spot_on
+	LDA.w #$FFFF                 ; incomplete, not "no reachable target"
+	CLC
+	RTS
+.found_next
+	LDA.w #0
+	STA.l !fl_tp_tried
+	LDA.l !fl_tp_best_i
+	SEC
 	RTS
 ; A = 1 << X (slot 0-15). Preserves X.
 fl_tp_bit:

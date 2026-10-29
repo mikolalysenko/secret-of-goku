@@ -132,6 +132,33 @@ macro fx_assembly_cell(cell)
 endmacro
 
 fx_emit_setup:
+	PHA
+	LDA.w !goku_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_FOCUS
+	BEQ .heavy
+	CMP.w #!GOKU_K_TRANSFORM
+	BNE .normal
+.heavy
+	LDA.w $0056
+	AND.w #$00FF
+	CMP.w #1
+	BNE .normal
+	LDA !d_cur+!C_KIND
+	AND.w #$00FF
+	CMP.w #!FX_AURA
+	BEQ .normal
+	CMP.w #!FX_BURST
+	BEQ .normal
+	CMP.w #!FX_ORB
+	BEQ .normal
+	CMP.w #!FX_LIGHTNING
+	BEQ .normal
+	PLA
+	SEC
+	RTS
+.normal
+	PLA
 	STA !d_lasta
 	ASL
 	TAX
@@ -991,10 +1018,16 @@ macro fx_cache_candidate(slot)
 		CMP.b #$F9
 		BEQ ?claimed
 	elseif <slot> == 9 || <slot> == 10
+		LDA.l !fx_pbig
+		AND.b #$08
+		BNE ?claimed               ; its native pre-upload owns it first
 		LDA.w $E28D
 		ORA.w $E261
 		BNE ?claimed
 	elseif <slot> == 13 || <slot> == 14
+		LDA.l !fx_pbig
+		AND.b #$10
+		BNE ?claimed               ; its native pre-upload owns it first
 		LDA.w $E48D
 		ORA.w $E461
 		BNE ?claimed

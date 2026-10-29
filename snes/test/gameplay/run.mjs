@@ -20,6 +20,7 @@
 // --jobs=N runs N Mesen instances at once (emulation stays deterministic).
 // --<module>-profile adds a span for every JSR to a label inside that
 // module's code bank (flight, goku, ui, audio, world, destroy, fx, ...).
+// --fx-trace records every indirect effect draw's kind and scanline.
 // Generated output stays in .local/snes-test/gameplay (or GAMEPLAY_OUT).
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {GAMEPLAY_CASES} from './cases.mjs';
@@ -56,8 +57,11 @@ const destroyScans=['dst_scan_attack','dst_barrier_hit'].map(n=>symbols.get(n));
 const spans=modules.map((n,i)=>`{${JSON.stringify(n)},${symbols.get(n)},${symbols.get('modules_field_frame')+4*(i+1)}}`);
 const nmiModules=readFileSync(join(repo,'snes/src/modules.asm'),'utf8').split('modules_field_nmi:')[1].split('RTL')[0].match(/JSL \w+/g).map(s=>s.slice(4));
 for(const [i,n] of nmiModules.entries())spans.push(`{${JSON.stringify('nmi_'+n)},${symbols.get(n)},${symbols.get('modules_field_nmi')+4*(i+1)}}`);
+spans.push(`{"nmi_ending_preupload",${symbols.get('ending_preupload')},${symbols.get('goku_preupload')}}`);
+spans.push(`{"nmi_goku_preupload",${symbols.get('goku_preupload')},${symbols.get('modules_field_preupload')+12}}`);
 if(symbols.has('fx_preupload'))spans.push(`{"nmi_fx_preupload",${symbols.get('fx_preupload')},${symbols.get('modules_field_preupload')+12}}`);
 spans.push('{"nmi_native",49320,49496}'); // C0A8 -> C158
+spans.push('{"nmi_tail",49496,49519}'); // C158 -> C16F
 spans.push(`{"combat_logic",${symbols.get('cb_hook_logic_read')},${symbols.get('cb_hook_logic_read')+17}}`);
 const fastField=symbols.has('core_field_scroll');
 const calls=[0xB08C,0xB0A0,0xB0A3,0xB0A6,0xB0AC,0xB0B2,0xB0B8,...(fastField?[]:[0xB0BB]),0xB0BF,0xB0C3,0xB0C7,...(fastField?[]:[0xB0CA]),0xB0D0];
@@ -98,7 +102,8 @@ async function runCase({c:[name,bundle,script,setup=''],offset}){
   const tag=offset?`${name}+${offset}`:name;
   const copy=privateRom(rom,'gameplay-'+tag);
   const hotFrames=args.find(x=>x.startsWith('--native-profile='))?.slice(17).split(',').map(Number)??[];
-  const pre=`PCM=${args.includes('--pcm')}\nPROFILE_NATIVE=${args.some(x=>x==='--native-profile'||x.startsWith('--native-profile='))}\nPROFILE_FRAMES={${hotFrames.map(f=>`[${f}]=true`).join(',')}}\nBUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nSTART_OFFSET=${offset}\nSETUP=${JSON.stringify(setup)}\nSCRIPT=${JSON.stringify(Array(repeat).fill(script).join(','))}\nSPANS={${spans.join(',')}}\nFX_TILES=${symbols.get('fx_entry_tile')}\nAURA_CELLS={${[...auraCells].map(c=>`[${c}]=true`).join(',')}}\nUPLOAD=${JSON.stringify(join(repo,'dist/snes/gen/audio/upload.bin'))}\n`;
+  const pre=`PCM=${args.includes('--pcm')}\nPROFILE_NATIVE=${args.some(x=>x==='--native-profile'||x.startsWith('--native-profile='))}\nPROFILE_FRAMES={${hotFrames.map(f=>`[${f}]=true`).join(',')}}\nBUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nSTART_OFFSET=${offset}\nSETUP=${JSON.stringify(setup)}\nSCRIPT=${JSON.stringify(Array(repeat).fill(script).join(','))}\nSPANS={${spans.join(',')}}\nFX_TILES=${symbols.get('fx_entry_tile')}\nAURA_CELLS={${[...auraCells].map(c=>`[${c}]=true`).join(',')}}\nFX_DRAW_ADDR=${args.includes('--fx-trace')?symbols.get('fx_draw_current'):0}
+UPLOAD=${JSON.stringify(join(repo,'dist/snes/gen/audio/upload.bin'))}\n`;
   const corridor=args.includes('--flight-corridor')&&name==='fly-ki';
   const nativeProfile=args.includes('--routine-profile')||args.includes('--record-native');
   const test=pre+`FLIGHT_CORRIDOR=${corridor}\nCHECK_AURA=${name.endsWith('-grass')}\nGFX_DMA={${gfxDma.join(',')}}\nDESTROY_SCANS={${destroyScans.join(',')}}\nDESTROY_ATTACK_ID=${destroyAbi().arg_id}\nRECORD_NATIVE=${args.includes('--record-native')}\nNATIVE_BODY=${symbols.get('core_native_body')}\n`+readFileSync(join(repo,'snes/test/audio/lib.lua'),'utf8')+'\n'+(nativeProfile?readFileSync(join(import.meta.dirname,'native-routines.lua'),'utf8')+'\n':'')+readFileSync(join(import.meta.dirname,'gameplay.lua'),'utf8');

@@ -377,7 +377,7 @@ export async function generate({rom,repo,outDir,xdata}){
   // frames (palette rotations of one cell) stay fixed, so a ring needs at
   // most six cells at once, within what one vblank can upload.
   const ringParts=(R,gold,age,compact=false)=>{
-    const count=age<8?(compact?8:16):(compact?4:8),rad=R+age*1.5,phase=age>>1,parts=[];
+    const count=age<8?(compact?6:16):(compact?3:8),rad=R+age*1.5,phase=age>>1,parts=[];
     const outer=age<8?(gold?'gold-arc':'aura-arc'):(gold?'gold-spark':'impact-spark'),spark=gold?'gold-spark':'impact-spark';
     for(let i=0;i<count;i++){
       const a=i*Math.PI*2/count,dx=Math.cos(a),dy=Math.sin(a),turn=Math.round(i*4/count)%4;
@@ -388,7 +388,7 @@ export async function generate({rom,repo,outDir,xdata}){
   };
   const ringBase=asms.length;            // ((R16 ? 2 : 0) + gold) * 14 + age
   for(const R of[56,16])for(const gold of[false,true])for(let age=0;age<14;age++)asms.push(ringParts(R,gold,age));
-  // Native gameplay keeps the expanding ring, with eight arcs and four
+  // Native gameplay keeps the expanding ring, with six arcs and three
   // inner sparks instead of 32 overlapping sprites at the reveal's peak.
   const compactRingBase=asms.length;
   for(const R of[56,16])for(const gold of[false,true])for(let age=0;age<14;age++)asms.push(ringParts(R,gold,age,true));

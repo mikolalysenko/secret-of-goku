@@ -1061,6 +1061,14 @@ endif
 	CMP.w #!PAD_L|!PAD_B
 	SEP #$20
 	BEQ .queue
+	LDA.w !goku_act
+	BEQ .queue                     ; ordinary walking also uses the bounded queue
+	CMP.b #!GOKU_K_PUNCH
+	BNE .direct
+	LDA.w !fl_state
+	AND.b #!FLS_FLY
+	BEQ .queue                    ; ground punches: defer CPU companion AI
+.direct
 	LDA.b #0
 	STA.l !core_party_queuing
 .queue

@@ -70,7 +70,7 @@ local function run(tag,on,player2,event,action)
     check(tag..'_ai'..i,aiCalls[i]>=19 and aiCalls[i]<=21,'AI/animation calls '..aiCalls[i])
   end
   check(tag..'_deadline',maxPendingAge<=4,'oldest queued job '..maxPendingAge)
-  check(tag..'_queued',action and pendingWrites>0 or not action and pendingWrites==0,'queue writes '..pendingWrites)
+  check(tag..'_queued',(on and not event) and pendingWrites>0 or (not on or event) and pendingWrites==0,'queue writes '..pendingWrites)
   if player2 then check(tag..'_owner',H.r8(0x7EE22C)==2,'player assignment changed') end
 end
 function test()

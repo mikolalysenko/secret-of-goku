@@ -1797,3 +1797,84 @@ These documented gaps remain separate from the measured performance fixes:
   [ui.md](ui.md#analyzer-readouts-scouterasm-scouter-readoutsasm-scouter-objasm).
 - Less common story, boss and ending routes still need broader playthrough
   coverage. Physical-console and flash-cartridge testing remains open.
+
+## Crowded zero-drop performance — October 28, 2026
+
+The final pass closes the crowded timing target without changing native HP,
+damage or status transitions. The previous open misses were ordinary flight,
+flying ki, flying punch, ground punch, charging, transformation and repeated
+teleport searches across start-phase offsets.
+
+**Method.** Strict builds ran all 13 short and 13 long real-input cases,
+followed by long runs at start-phase offsets 1-4: 78 runs and 81,120 video
+frames in total. Every run checks gameplay
+state, palette, stamina, OBJ overflow and NMI overruns. The final matrix has
+zero missed vblanks and zero overruns in every case. The detailed profiling
+harness now also spans both pre-upload callbacks and the mirrored NMI tail;
+`--fx-trace` records each indirect effect draw's kind and scanline. These
+measurements identified the native HP redraw, deferred VRAM work and late
+beam/impact frames.
+
+**Exact math and input.**
+
+- Radial launch components use four 113×113 signed-16-bit ExHiROM tables, one
+  per axis and form, indexed by `(y+56)*113 + x+56`. `radial.test.mjs` verifies
+  every entry and the assembled axis-selection path against the former
+  square-root/division formula.
+- `cb_mul16` uses one hardware product when both operands are bytes and the
+  original four-product path otherwise. `mul16.test.mjs` covers every byte
+  pair and representative full-width products.
+- An absent multitap is probed every 256 polls instead of on every poll. The
+  standard `$4218/$421A` values remain current, with the BIOS's auto-read wait;
+  a present multitap always uses the original serial path. Zero mask/inject
+  writes are skipped. Its counter lives in core-safe SRAM, not the reserved WRAM
+  probe area. `input-cache.test.mjs` covers values, exact caller flags, probe
+  recovery and a present multitap on every poll. Combat's NMI pad history
+  retains the original wait on every vblank.
+
+**Bounded scheduling and presentation.**
+
+- Walking and ground-punch companion work joins the existing bounded queue.
+  Healthy local-flight AI command service runs on phase one of four; damage,
+  death and launch processing always retain the full native service. Native
+  status and HP transitions are unchanged.
+- Optional phase-one non-key effect assemblies yield during Focus and
+  transformation. The compact transformation ring keeps six arcs and three
+  sparks, while the full six-sprite aura remains intact. `fx_emit_setup`
+  preserves the assembly ID across this gate, so the gallery's cold rings and
+  all allowed effects remain valid.
+- Changed strip polygons can reuse the previous completed HDMA table on a late
+  frame. Scenery continuation runs only when fewer than eight scanlines elapsed
+  since destroy's frame stage, and new planning defers after line 180. Punch
+  warm-up preparation yields after line 120; the optional palm orb yields after
+  line 190, while ki shots yield after line 180 and hit assemblies and impact
+  sparks yield after line 200, leaving the aura, beam and native hit intact.
+- Radio/window presentation yields on native phases zero through two during
+  punches, beams, blasts, Focus and transformation, and on phase two for an
+  independent projectile, without changing charge-warning cadence. A pending
+  non-compatible Goku cell skips one native streaming vblank, keeping its
+  palette and art synchronized. DMA line estimates use an exact aligned-size
+  table; the unaligned fallback divides the full byte count by 160, and the
+  original 3 KiB queue budget and vblank deadlines remain unchanged.
+- Required fifth-piece companion uploads use two pending bits in `fx_pbig` as an
+  allocator lock, then land after the shared queue in a small dedicated DMA path.
+  Optional core-queue transfers yield for that vblank. This keeps both native
+  weapon sprites and the full aura correct without overrunning NMI.
+  A worst-case lag vblank hides only the fifth effect for one frame while its
+  required upload completes, and optional hit assemblies stay within 17 sprites.
+- Teleport target selection tests one exact enemy candidate per frame, retaining
+  the nearest-first/slot order and tried mask. Late starts and age-four arrival
+  searches wait for an affordable frame; deferred starts widen their budget by
+  16 lines per retry so every action eventually starts. Native dialogue pauses
+  until teleport movement/camera work settles. Companion jobs coalesce until an
+  affordable frame instead of being forced by age, including pending teleports.
+
+Validation: strict build, the complete 13 short/13 long matrix and all 52
+alternate-phase long runs are zero-drop with no palette, stamina, OBJ or NMI
+errors. FX gallery, scheduler/controller units, radial/multiplication units,
+and exact combat punch/ki/beam/full-wave comparisons pass. The flight suite
+matches all 19,996 landing queries and its live teleport cases. Snes9x, bsnes
+and bsnes-accurate pass the ExHiROM/battery/audio scenarios. Rejected trials
+included broader enemy deferral, whole-OAM reuse, shorter rings, audio defer,
+and native status skips: those either regressed timing, starved uploads or
+broke combat parity and were reverted.

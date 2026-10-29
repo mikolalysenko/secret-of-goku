@@ -638,6 +638,23 @@ cb_mul16:
 	; use it, like the game's own field code)
 	STA !cb_mq3                   ; b
 	SEP #$20
+	LDA !cb_mq+1
+	ORA !cb_mq3+1
+	BNE .full
+	; Both operands are bytes: one product, with the same 32-bit result and
+	; cleared cb_mq. Beam lengths and most taper/damage factors use this path.
+	LDA !cb_mq
+	STA.l $004202
+	LDA !cb_mq3
+	STA.l $004203
+	NOP : NOP : NOP : NOP
+	REP #$20
+	LDA.l $004216
+	STA !cb_mq1
+	STZ !cb_mq2
+	STZ !cb_mq
+	RTS
+.full
 	LDA !cb_mq                    ; al
 	STA.l $004202
 	LDA !cb_mq3                   ; bl
@@ -2039,26 +2056,52 @@ cb_burst_spark:
 ; A16 = signed component c, cb_m9 = d (8.8) -> A16 = D * c / d in 8.8
 ; (D = launch distance of the current form), rounded.
 cb_radial_component:
-	STA !cb_m8                    ; sign
-	JSR cb_abs
-	STA !cb_mq
-	LDA.w #!COMBAT_LAUNCH_BASE    ; the launch distance (snes-feel.mjs)
-	LDX.w #!COMBAT_LAUNCH_SSJ
-	JSR cb_by_form
-	JSR cb_mul16                  ; |c| * D (56 * 136 < 2^13)
-	; (|c| * D << 16) / d8 = |c| * D / d in 8.8
-	LDA !cb_mq1
-	STA !cb_m0                    ; dividend high
-	STZ !cb_m1                    ; dividend low
-	LDA !cb_m9
-	STA !cb_m2                    ; divisor
-	JSR cb_div32
-	LDX !cb_m8
-	CPX.w #$8000
-	BCC +
-	EOR.w #$FFFF
-	INC
-+	RTS
+	; All 12,769 integer offsets are precomputed in ExHiROM. The table holds
+	; the exact signed 8.8 result of the old square root and division path.
+	STA !cb_m8
+	LDA !cb_by
+	CLC
+	ADC.w #56
+	STA !cb_m0                    ; y + 56
+	ASL : ASL : ASL : ASL
+	STA !cb_m1                    ; 16y
+	ASL
+	STA !cb_m2                    ; 32y
+	ASL
+	CLC
+	ADC !cb_m1                    ; 64y + 16y = 80y
+	ADC !cb_m2                    ; 80y + 32y = 112y
+	ADC !cb_m0                    ; 112y + y = 113y
+	STA !cb_m1
+	LDA !cb_bx
+	CLC
+	ADC.w #56
+	CLC
+	ADC !cb_m1
+	ASL
+	TAX
+	LDA !cb_m8
+	CMP !cb_bx
+	BEQ .x
+	JMP .y
+.x
+	LDA !cb_form
+	AND.w #$0001
+	BNE .x_ssj
+	LDA.l !XDATA_COMBAT_RADIAL_X_BASE,X
+	RTS
+.x_ssj
+	LDA.l !XDATA_COMBAT_RADIAL_X_SSJ,X
+	RTS
+.y
+	LDA !cb_form
+	AND.w #$0001
+	BNE .y_ssj
+	LDA.l !XDATA_COMBAT_RADIAL_Y_BASE,X
+	RTS
+.y_ssj
+	LDA.l !XDATA_COMBAT_RADIAL_Y_SSJ,X
+	RTS
 
 ; cb_m0:cb_m1 / cb_m2 -> A16 = rounded quotient (requires cb_m0 < cb_m2).
 cb_div32:

@@ -108,7 +108,7 @@ local function dmaWrite(_, value)
       local src = H.r16(0x4302 + ch * 16) | (H.r8(0x4304 + ch * 16) << 16)
       -- The native weapon-ready hook queues through core (bank A0). Its
       -- prepared WRAM cells are the game's, not a UI lease's pixels.
-      if who == 'ui' and ((src >= 0x7E4200 and src < 0x7E4300) or (src >= 0x7E4400 and src < 0x7E4500)) then who = 'native' end
+      if (who == 'ui' or who == 'fx') and ((src >= 0x7E4200 and src < 0x7E4300) or (src >= 0x7E4400 and src < 0x7E4500)) then who = 'native' end
       if H.r8(0x4301 + ch * 16) == 0x18 then
         for w = va, va + size // 2 - 1, 16 do
           local t = (w - 0x6000) >> 4
@@ -247,6 +247,7 @@ hook(SYM.core_field_nmi_done, function()
               local e = tileEntry[(tt & 0x1FE)] or tileEntry[((tt - 16) & 0x1FE)]
               local from = e and busyFrom[e]
               if from and lastWrite[tt] < from then stats.nativeLate = stats.nativeLate + 1
+                note('native-late', {slot=i, tile=tt, writer=w, entry=e, claimed=from, written=lastWrite[tt]})
               else
                 stats.nativeBad = stats.nativeBad + 1
                 note('native', {slot=i, tile=tt, writer=w, entry=e, claimed=from, written=lastWrite[tt]})
@@ -268,7 +269,7 @@ hook(SYM.core_field_nmi_done, function()
             if displayed.claimA then stats.fxClaimed = stats.fxClaimed + 1 end
             if not vramMatches(e, cellBytes(c)) then
               local late = (displayed.cpend >> e) & 1 ~= 0
-              local d = {slot=i, entry=e, cell=c, aura=isAura, writer=lastWriter[t], now=H.r16(CCELL + e * 2), late=late, line=emu.getState()['ppu.scanline']}
+              local d = {slot=i, entry=e, cell=c, aura=isAura, writer=lastWriter[t], now=H.r16(CCELL + e * 2), late=late, line=emu.getState()['ppu.scanline'], phase=H.r8(0x7E0056)}
               if isAura then
                 stats.auraBad = stats.auraBad + 1
                 local row = cellRow[c]

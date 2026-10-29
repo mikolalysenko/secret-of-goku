@@ -622,10 +622,19 @@ flight_frame:
 	STA.w !core_pad_mask&$FFFF
 	JMP .publish
 .noLR
+	LDA.l !fl_tp_act
+	BNE .edge
+	LDA.l !fl_tp_queued
+	BEQ .edge
+	JSR fl_tp_start               ; retry a target search deferred last frame
+	BRA .start_decided
+.edge
 	JSR fl_tp_chord_edge         ; L+B pressed: Instant Transmission
 	BCC +
 	JSR fl_tp_start
-+	JSR fl_decide
++
+.start_decided
+	JSR fl_decide
 	JSR fl_tp_frame
 .publish
 	JSR fl_publish
@@ -992,6 +1001,7 @@ fl_init_work:
 	STA.l !fl_ce_phase
 	STA.l !fl_tp_act
 	STA.l !fl_tp_queued
+	STA.l !fl_tp_tried
 	STA.l !fl_tp_custom
 	STA.l !fl_owned
 	JSR fl_anchor_none

@@ -4,6 +4,48 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES performance: zero drops in crowded gameplay (2026-10-28)
+
+- Replace iterative radial launch math with exact ExHiROM tables and add a
+  one-product fast path for byte-sized `cb_mul16` operands. All 12,769 radial
+  entries per form and all 65,536 byte products match, with full-width checks.
+- Cache absent-multitap probes for 255 polls, retain the BIOS path whenever a
+  multitap is present, wait for auto-read before sampling pads, and skip only
+  redundant zero-mask writes. Its counter lives in core-safe SRAM, outside the
+  reserved WRAM probe area. New assembled tests cover fresh pad values,
+  caller flags, probe recovery, and a present multitap on every poll.
+- Bound crowded work instead of allowing CPU spikes: walking and ground-punch
+  companion AI use the existing queue; healthy local-flight AI service uses
+  phase one of four while damage/death retain full service; optional phase-one
+  effect assemblies yield during Focus/transformation while the full aura stays
+  intact. Native status, HP, damage, and combat parity remain intact.
+- Late strip rendering reuses the previous complete HDMA table. Scenery
+  continuations use an eight-scanline elapsed-time guard. A non-compatible
+  Goku cell holds native streaming for one vblank so its palette and art change
+  together. DMA line calculation uses an exact aligned-size lookup, with the
+  full-size unaligned fallback and original 3 KiB VRAM budget preserved.
+  Auto-joypad sampling retains the original exact wait. Required fifth-piece
+  companion uploads bypass the full shared queue with an allocator lock and a
+  reserved post-queue DMA slot; optional core-queue transfers yield so these
+  uploads fit vblank without hiding or corrupting either sprite set.
+- Attack radio/window presentation yields on crowded phases without changing
+  charge warnings. Nonvisible punch preparation, late palm orbs, ki shots and
+  hit/impact assemblies have scanline bounds; the aura, beams and native hits
+  remain. Destroy planning also defers after line 180.
+- Teleport target selection tests one exact enemy candidate per frame, retaining
+  target order and the tried mask. Late starts and arrival searches wait for an
+  affordable frame, deferred starts widen their retry budget without starving
+  the action, and native dialogue resumes after movement/camera work. Companion
+  jobs coalesce until affordable instead of forcing a crowded frame.
+- Validation: strict build; all 13 short and all 13 long gameplay cases have
+  zero CPU misses and zero vblank overruns. All 52 additional long runs at
+  start-phase offsets 1-4 also have zero misses and overruns: 78 runs and
+  81,120 video frames in total. FX gallery,
+  controller, scheduler, radial and multiplication tests pass. Combat punch,
+  ki, beam and full-wave parity checks pass. All 19,996 landing queries and
+  the live flight/teleport checks match, and all three cross-emulator
+  ExHiROM/battery/audio scenarios pass.
+
 ## Orbit: bounded explosions keep the fighters and beams whole (2026-10-28)
 
 - Cap burst drawing at 24 complete cells per frame. Early explosion cells

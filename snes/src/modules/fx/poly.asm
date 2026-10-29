@@ -658,8 +658,23 @@ fx_poly_rows:
 	STA !fxp_y
 	STZ !fxp_rip
 	JSR fx_poly_key
-	BCS .build
+	BCS .changed
 	LDA.l !fx_pshown             ; the same picture: show those tables again
+	STA.l !fx_preuse
+	LDA.w #$0002
+	STA.l !fx_poly_req
+	CLC
+	RTS
+.changed
+	LDA.l !fx_poly_on
+	BEQ .build                   ; a cold effect has no completed table to reuse
+	JSR fx_frame_vline
+	CMP.w #140
+	BCC .build
+	; A late crowded frame keeps the last complete strip for one update rather
+	; than rebuilding both HDMA tables past NMI. Its old key still requests a
+	; rebuild on the next frame with time; no sprites or blank picture are used.
+	LDA.l !fx_pshown
 	STA.l !fx_preuse
 	LDA.w #$0002
 	STA.l !fx_poly_req
