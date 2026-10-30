@@ -4,6 +4,14 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Popoi explosion presentation (2026-10-29)
+
+- Replace the generic power-burst cue with the faster comic balloon-pop and
+  hold Popoi's camera-facing panic frame at 44 px throughout the explosion.
+  Restore the normal companion species, graphics descriptor and four body
+  pieces instead of allowing the native fall/spirit sequence to advance.
+  A full-party regression checks the held state over the entire vanish.
+
 ## SNES ending UI and beam-scene rendering (2026-10-29)
 
 - Keep BG3 disabled throughout the fatal planet transition and GAME OVER,

@@ -56,12 +56,12 @@ fz_sfx_audio:
 	db !AUDIO_SFX_CHARGED, !AUDIO_SFX_TRANSFORM, !AUDIO_SFX_REVERT
 	db !AUDIO_SFX_FRIEZA_DISC, !AUDIO_SFX_FRIEZA_BEAM, !AUDIO_SFX_FRIEZA_RUSH
 	db !AUDIO_SFX_FRIEZA_LAUGH, !AUDIO_SFX_DEFLECT, !AUDIO_SFX_IMPACT
-	db !AUDIO_SFX_TELEPORT
+	db !AUDIO_SFX_TELEPORT, !AUDIO_SFX_BALLOON_POP_ID
 else
 ; native effect per cue (0 = silent): bursts and impacts use the game's
 ; hit ($50) and transformation ($12) sounds
 fz_sfx_native:
-	db $00, $12,$00,$00, $00,$50,$50, $00,$12,$12, $00,$00,$00, $00,$50,$50, $00
+	db $00, $12,$00,$00, $00,$50,$50, $00,$12,$12, $00,$00,$00, $00,$50,$50, $00,$50
 endif
 
 ; Music cue change: A16 = !FZM_* (0 = back to the scene's own music).

@@ -429,6 +429,11 @@ fz_scene_tick:
 +	INC !fz_sage
 	STA !fz_t4
 	LDA !fz_t4
+	CMP.w #!FZS_EXPLODE
+	BNE +
+	JSR fz_explode_popoi
++
+	LDA !fz_t4
 	CMP.w #!FZS_TREE_ARRIVAL
 	BNE +
 	LDA !fz_sage
@@ -520,6 +525,35 @@ fz_emperor_fall_tick:
 	STA $E000,X
 	REP #$20
 .out
+	RTS
+
+; explode: hold Popoi's camera-facing panic pose at the lift's apex. The
+; native fall/spirit sequence must not advance or drop him out of the burst.
+fz_explode_popoi:
+	JSR fz_popoi_descriptor
+	LDA.w #4
+	STA $E483                         ; restore the four body pieces
+	LDA $E400
+	ORA.w #$0001
+	STA $E400
+	LDA !fz_stx
+	STA $E402
+	LDA !fz_sty
+	CLC
+	ADC.w #56                         ; target = y - altitude - 12
+	STA $E404
+	LDA.w #44
+	STA $E445
+	LDA.w #0
+	STA $E410                         ; face the camera
+	STA $E431
+	STA $E40A
+	STA $E490                         ; no death, petrify or spirit presentation
+	STA $E491
+	LDA.w #$00D7
+	STA $E580                         ; ordinary companion, not the spirit actor
+	LDA.w #$5C1C                      ; native front panic frame
+	STA $E418
 	RTS
 
 ; lift: Popoi rises to Goku's left, (c.x - 40, c.y + 24) with altitude

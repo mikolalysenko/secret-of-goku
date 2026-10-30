@@ -446,7 +446,8 @@ endif
 !FZ_SFX_DEFLECT     = 14
 !FZ_SFX_HIT_IMPACT  = 15    ; impact (Goku's hits landing)
 !FZ_SFX_TELEPORT    = 16
-!FZ_SFX_COUNT       = 17
+!FZ_SFX_POP         = 17    ; comic balloon pop for Popoi's explosion
+!FZ_SFX_COUNT       = 18
 
 ; music cues (frieza.js music)
 !FZM_ARRIVAL   = 1

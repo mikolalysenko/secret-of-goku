@@ -210,6 +210,14 @@ of the world's (the same within a cell, repeating per cell).
   renderer with the deck's colours in BG palette 2 (the only one map 255
   leaves free); the alarm is a fixed-colour add of red 2 + alarm to BG1 and
   BG2 in vblank.
+- **Popoi's explosion** (`scene.asm`, `state.asm`, `bind.asm`): the C3 cue
+  uses the comic balloon-pop effect. Popoi keeps the ordinary companion
+  species and front-facing panic frame at 44 px altitude for the whole
+  vanish, instead of dropping into the native spirit sequence. The held
+  state restores the actor descriptor and four body pieces and clears the
+  death/petrify flags. `effects: explode` runs a full-party fixture for 76
+  frames and asserts every one of those fields; `popoi-lift` covers the
+  ordinary lift animation.
 
 ## World-flight picture (`flyby.asm`, `_frieza-flyby.mjs`)
 

@@ -169,14 +169,22 @@ function scenarioTest(sc){
   const writes=friezaWrites(sc.frieza,sc.challenge);
   return `
 function test()
-  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__'+sc.preset))})
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,sc.bundle??'preset__'+sc.preset))})
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   F.apply(${luaWrites(writes)})
   F.apply(${luaWrites(sc.writes??[])})
   H.w8(0x${(0x7E0000|defs.fz_music).toString(16)}, ${sc.music??0})
+  ${sc.popoi?`
+  H.w8(0x${(0x7E0000|defs.fz_pend).toString(16)}, 2)
+  H.w8(0x7EE400, 1)
+  H.w16(0x7EE402, ${sc.frieza.scene.target.x})
+  H.w16(0x7EE404, ${sc.frieza.scene.target.y+56})
+  H.w8(0x7EE445, 44)
+  `:''}
   local shots = {}
   local boxes = {}
+  local popoiStates = {}
   local frame = 0
   local targets = {${sc.frames.join(',')}}
   local t = 1
@@ -184,6 +192,13 @@ function test()
     local target = targets[t]
     H.wait(1)
     frame = frame + 1
+    ${sc.popoi?`local o = {}
+    for e = 0, 127 do
+      local y = H.oam(e * 4 + 1)
+      if y ~= 0xE0 then o[#o + 1] = string.format('%d:%03X%02X%03X%02X', e, H.oam(e * 4), y, H.oam(e * 4 + 2) | ((H.oam(e * 4 + 3) & 1) << 8), H.oam(e * 4 + 3)) end
+    end
+    popoiStates[#popoiStates + 1] = {frame=frame, active=H.r8(0x7EE400), altitude=H.r8(0x7EE445), facing=H.r8(0x7EE410), action=H.r8(0x7EE431), sequence=H.r16(0x7EE418), pose=H.r8(0x7EE40A), mode=H.r8(0x7EE460), flags=H.r8(0x7EE461), status=H.r8(0x7EE490), status2=H.r8(0x7EE491), species=H.r8(0x7EE580), descriptor=H.r16(0x7EE480), parts=H.r8(0x7EE483), sx=H.r16(0x7EE420), sy=H.r16(0x7EE422), oam=table.concat(o, ',')}
+    `:''}
     if frame >= target - 2 and frame <= target + 2 then
       local name = string.format('f%05d', frame)
       H.shot(name)
@@ -197,6 +212,8 @@ function test()
   H.result('boxes', boxes)
   H.result('scene', F.ram(0x${defs.fz_scene.toString(16)}|0x7E0000))
   H.result('age', F.ram16(0x${defs.fz_sage.toString(16)}|0x7E0000))
+  H.result('popoiStates', popoiStates)
+  H.result('popoi', {active=H.r8(0x7EE400), x=H.r16(0x7EE402), y=H.r16(0x7EE404), altitude=H.r8(0x7EE445), facing=H.r8(0x7EE410), action=H.r8(0x7EE431), sequence=H.r16(0x7EE418), frame=H.r8(0x7EE40A)})
   F.done()
 end
 `;
@@ -1302,13 +1319,22 @@ if(want('effects')&&existsSync(scenarioRoot)){
   for(const name of Object.keys(scenarios)){
     const file=join(scenarioRoot,name,'scenario.json');
     if(!existsSync(file))continue;
-    const sc={...JSON.parse(readFileSync(file,'utf8')),music:scenarios[name].music,writes:scenarios[name].writes};
+    const sc={...JSON.parse(readFileSync(file,'utf8')),music:scenarios[name].music,writes:scenarios[name].writes,popoi:scenarios[name].popoi,frames:scenarios[name].frames,bundle:scenarios[name].bundle};
     const rom=privateRom(romSrc,`frieza-fx-${name}`);
     const out=join(outRoot,'effects',name);
     const r=await runMesen({rom,test:lib+'\n'+scenarioTest(sc),outDir:out,state:join(cps,'waterfall.mss')});
     cleanupRom(rom);
     const res=r.results??{};
     const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+    if(name==='explode'){
+      if((res.popoiStates??[]).length<70)failures.push('the explosion did not cover the full vanish');
+      for(const s of res.popoiStates??[]){
+        // A direct scene import has one setup frame before its first tick.
+        if(s.frame>1&&(s.active!==1||s.altitude!==44||s.facing!==0||s.sequence!==0x5C1C||s.status!==0||s.status2!==0||s.species!==0xD7)){
+          failures.push(`Popoi left the held panic pose at frame ${s.frame}`);break;
+        }
+      }
+    }
     const notes=[];
     for(const f of sc.frames){
       const ref=join(scenarioRoot,name,`frame-${String(f).padStart(5,'0')}.png`);

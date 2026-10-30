@@ -869,11 +869,12 @@ frieza_h_explode:                     ; C3
 	JSR fz_set
 	LDA.w #!FZS_EXPLODE
 	JSR fz_cue
+	JSR fz_explode_popoi
 	SEP #$20
 	LDA.b #!FZSF_TARGET
 	TSB !fz_sflags
 	REP #$20
-	LDA.w #!FZ_SFX_POWER_BURST
+	LDA.w #!FZ_SFX_POP
 	JSR fz_sfx
 	LDA.w #18
 	JSR fz_pulse
