@@ -72,6 +72,7 @@ const scenes=[
   // weapon/effect cells coherent outside the Rabite fixture too.
   ['thanatos-fight','preset__thanatos',0,fight,false,'',{aura:false}],
   ['thanatos-walk','preset__thanatos',0,Array(8).fill('right:30,left:30,up:20,down:20').join(','),false,'',{aura:false}],
+  ['beast-ki','preset__beast',0,'y:240',false,'',{aura:false,fxShown:1}],
   // Its crowded first charge (flame, lightning, gold sparks, the party) can
   // pass the PPU's 34 slivers on a line: one flame line dropped for one
   // frame (frame 796, line 166 on 431c1b3). Reported, not yet asserted.
@@ -95,7 +96,7 @@ for(const [name,bundle,form,script,conflict,extra='',needs={}] of scenes){
     console.log(`${name} girl transients: ${a.totals.friezaFrames} frames, ${a.totals.frieza} unexplained pixels`);
   }
   if(r.code!==0||v.error)throw Error(`${name}: ${v.error??r.output.slice(-2000)}`);
-  const events=['slot5Numbers','fxClaimed','formChanges','gokuHits'];
+  const events=['slot5Numbers','fxClaimed','formChanges','gokuHits','fxShown'];
   const missing=events.filter(k=>needs[k]&&!(v[k]>=needs[k]));
   const exercised=(!conflict||(v.regionAWrites>0&&v.nativeWritesHeld>0))&&!missing.length;
   const aura=needs.aura!==false;

@@ -263,6 +263,23 @@ fatal_layers:
 fatal_sfx:
 	JMP ending_sound
 
+; The native line-195 HUD IRQ changes BGMODE and enables BG3. Keep its
+; main-screen value out of the fatal picture without changing the interrupt.
+%orig4($C0C1DF, $2C8D14A9)
+%hijack_jsl($C0C1DF, fatal_hud_tm, 5, ending)
+fatal_hud_tm:
+	LDA.l !ending_status
+	AND.b #!ES_DEFEATED
+	BEQ .native
+	LDA.l !SRAM_WORK_SCENE+$45
+	AND.b #$FB
+	BRA .store
+.native
+	LDA.b #$14
+.store
+	STA.l $00212C
+	RTL
+
 ; C1:E77E (inside the native event dispatcher C1:E77B, after REP #$30 /
 ; PHX; A = event id): replaced CMP #$0800 / BCS $E7C9. While the finale's
 ; fatal sequence runs, the death warp (7FF) and both boss-victory events

@@ -185,6 +185,9 @@ fx_poly_beam:
 	CLC
 	RTS
 .build
+	LDA !fxp_len
+	CMP.l !fx_pkey+4
+	BNE .build_new               ; growth always reaches the current full width
 	LDA.l !fx_s
 	EOR.l !fx_pkey+8
 	AND.w #$000F

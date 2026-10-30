@@ -544,6 +544,8 @@ fz_explode_popoi:
 	STA $E404
 	LDA.w #44
 	STA $E445
+	; Fall through to the shared surprised expression.
+fz_popoi_panic:
 	LDA.w #0
 	STA $E410                         ; face the camera
 	STA $E431
@@ -552,7 +554,7 @@ fz_explode_popoi:
 	STA $E491
 	LDA.w #$00D7
 	STA $E580                         ; ordinary companion, not the spirit actor
-	LDA.w #$5C1C                      ; native front panic frame
+	LDA.w #$5C31                      ; open-mouth surprise
 	STA $E418
 	RTS
 
@@ -595,6 +597,7 @@ fz_lift_tick:
 +	SEP #$20
 	STA $E445
 	REP #$20
+	JSR fz_popoi_panic
 .out
 	RTS
 

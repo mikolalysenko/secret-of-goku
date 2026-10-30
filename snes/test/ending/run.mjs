@@ -100,7 +100,7 @@ async function spaceCheck(r,out){
 // Finale death: native collapse and fade, black, then planet-view's own
 // fatal view (globe, explosion, GAME OVER); Start returns to the title.
 const meanLight=png=>{const img=gfx.readPng(png);let s=0;for(let i=0;i<img.data.length;i+=4)s+=img.data[i]+img.data[i+1]+img.data[i+2];return s/(img.data.length/4);};
-async function fatalCheck(r,out){
+async function fatalCheck(r,out,maxLag=3){
   // (the sync runs at the end of the start frame, after the clock's tick)
   expect(/^fade00@[01]$/.test(audioCalls(r)[0]??''),`native music silenced for the death (${r.audio})`);
   expect(heard(r,'sfx20@408')&&heard(r,'sfx25@624'),`audio_sfx Frieza orb at 408, Fortress break at 624 (${r.audio})`);
@@ -112,7 +112,7 @@ async function fatalCheck(r,out){
   expect(l390<3,`black before the planet (${l390.toFixed(1)})`);
   expect((r.status_905&0x20)!==0,'GAME OVER reached (complete status)');
   expect(r.done===1,'fatal timeline done flag');
-  expect(r.lag_frames<=3,`lag ${r.lag_frames} frames`);
+  expect(r.lag_frames<=maxLag,`lag ${r.lag_frames} frames (limit ${maxLag})`);
   expect((r.fatal_ui_flashes??[]).length===0,`native UI reappeared during the fatal view (${(r.fatal_ui_flashes??[]).join(' ')})`);
   expect(r.shard_late===0,`fatal shard uploads missed ${r.shard_late} deadlines`);
   expect(r.shard_sprites_max<=32&&r.shard_slivers_max<=34,`fatal OBJ limits (${r.shard_sprites_max} sprites, ${r.shard_slivers_max} slivers)`);
@@ -508,6 +508,8 @@ const tests=[
   {name:'fatal',check:fatalCheck},
   {name:'fatal-dialogue',lua:'fatal',prelude:()=>`BUNDLE="preset__thanatos"\n`,check:fatalCheck},
   {name:'fatal-split',lua:'fatal',prelude:()=>`BUNDLE="preset__thanatos"\nFATAL_SPLIT=true\n`,check:fatalCheck},
+  {name:'fatal-trace',lua:'fatal',prelude:()=>`FATAL_TRACE=true\n`,check:fatalCheck},
+  {name:'fatal-beast',lua:'fatal',prelude:()=>`BUNDLE="preset__beast"\nFATAL_TRACE=true\n`,check:(r,out)=>fatalCheck(r,out,40)},
   {name:'depart',check:departCheck},
   {name:'vista',check:vistaCheck},
   {name:'flight',check:flightCheck},

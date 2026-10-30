@@ -745,7 +745,10 @@ both maps (`$5000`, `$3800`) during the vblanks before the hit, 8 blocks at
 a time, and the hit switches BG1SC/BG2SC to it. The red tint (+5 red over
 86-109 and 131-154, +2 from 156, the browser's formula) is a generated
 colour set per town, sent at the game's own palette transfer through core's
-`modules_cgram_upload` (`orbit_cgram_upload`).
+`modules_cgram_upload` (`orbit_cgram_upload`). The Fortress break and laser
+cues are joined by a sustained burning roar every 96 frames from the hit
+through the end of the town shot, so the houses do not fall silent while
+their fires remain visible.
 
 The laser is BG3: one solid tile in the laser's purple shown inside window
 1, `[a - 9, b + 9]` per line, and its core lit by colour math (+ (6, 25, 4)

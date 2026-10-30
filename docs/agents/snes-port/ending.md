@@ -872,8 +872,13 @@ answers the crisis query (the browser's are night).
 
 `fatal_layers` and the GAME OVER card now keep BG3 disabled after the
 field's line-195 HUD IRQ as well as at vblank. Their HDMA TM tables use the
-same BG3-free value at lines 170 and 196, so a native window or HUD cannot
-flash over the planet transition. `fatal-dialogue` starts with the party UI
+same BG3-free value at lines 170 and 196. The IRQ's `$212C` write is also
+masked during `ES_DEFEATED`, so a native window or HUD cannot flash over the
+planet transition even while the scene's layer state changes. `fatal-dialogue` starts with the party UI
 and an open Thanatos window; `fatal-split` also keeps the native HUD split
-request active. All three fatal cases check visible-line `$212C` writes,
-planet references, OBJ limits, vblank timing and the return to the title.
+request active. `fatal-beast` runs the same sequence from the Mana Beast
+arena and checks every explosion frame. Its native Mode 7 collapse retains
+37 frames of pre-existing delay outside the full-screen view, separate from
+the UI checks; vblank overruns and shard errors remain zero. All three fatal
+cases check visible-line `$212C` writes, planet references, OBJ limits,
+vblank timing and the return to the title.

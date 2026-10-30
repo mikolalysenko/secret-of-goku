@@ -1330,7 +1330,7 @@ if(want('effects')&&existsSync(scenarioRoot)){
       if((res.popoiStates??[]).length<70)failures.push('the explosion did not cover the full vanish');
       for(const s of res.popoiStates??[]){
         // A direct scene import has one setup frame before its first tick.
-        if(s.frame>1&&(s.active!==1||s.altitude!==44||s.facing!==0||s.sequence!==0x5C1C||s.status!==0||s.status2!==0||s.species!==0xD7)){
+        if(s.frame>1&&(s.active!==1||s.altitude!==44||s.facing!==0||s.sequence!==0x5C31||s.status!==0||s.status2!==0||s.species!==0xD7)){
           failures.push(`Popoi left the held panic pose at frame ${s.frame}`);break;
         }
       }

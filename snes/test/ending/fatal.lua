@@ -14,7 +14,10 @@ function test()
     local age = H.r16(E.age)
     local line = emu.getState()['ppu.scanline']
     if H.r8(E.phase) == E.P.fatal and age >= 360 and age <= 905 and line >= 190 and line < 225 and (value & 4) ~= 0 then
-      if #uiFlashes < 16 then uiFlashes[#uiFlashes + 1] = string.format('%d:%02X@%d', age, value, line) end
+      if #uiFlashes < 16 then
+        local st = emu.getState()
+        uiFlashes[#uiFlashes + 1] = string.format('%d:%02X@%d %02X:%04X full%d tm%02X', age, value, line, st['cpu.k'], st['cpu.pc'], H.sram(E.SW + 0x7B), H.sram(E.SW + 0x45))
+      end
     end
   end
   emu.addMemoryCallback(uiWrite, emu.callbackType.write, 0x00212C, 0x00212C)
@@ -22,6 +25,7 @@ function test()
   emu.addEventCallback(function()
     if FATAL_SPLIT and H.r8(E.phase) == E.P.fatal then H.w8(0x7E1D04, H.r8(0x7E1D04) | 0x20) end
     local age = H.r16(E.age)
+    if FATAL_TRACE and age >= 560 and age <= 660 then H.shot(string.format('trace-%03d', age)) end
     if H.r8(E.phase) == E.P.fatal and age >= 360 and age <= 905 and (H.r8(0x00212C) & 4) ~= 0 then
       if #uiFlashes < 16 then uiFlashes[#uiFlashes + 1] = string.format('%d:%02X', age, H.r8(0x00212C)) end
     end

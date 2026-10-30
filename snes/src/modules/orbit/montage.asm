@@ -265,6 +265,24 @@ mt_sounds:
 	JSL audio_sfx
 	REP #$30
 .out
+	; Keep a burning roar under the fires for the rest of the town shot.
+	LDA.l !orbit_msage
+	SEC : SBC.l orbit_mt_towns+4,X
+	BMI .done
+	CMP.w #300
+	BCS .done
+	STA.l $004204
+	SEP #$20
+	LDA.b #96
+	STA.l $004206
+	REP #$20
+	NOP : NOP : NOP : NOP : NOP : NOP : NOP : NOP
+	LDA.l $004214
+	BNE .done
+	LDA.w #!AUDIO_SFX_BEAM
+	JSL audio_sfx
+	REP #$30
+.done
 	RTS
 
 ; The pullback's cue: frieza.js plays 'beam' at pullbackStart + 60 (flag 8

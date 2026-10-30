@@ -4,6 +4,19 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Combat and cinematic follow-up fixes (2026-10-30)
+
+- Popoi now shows a big open-mouth surprised expression during the lift and
+  keeps it through the explosion while remaining airborne.
+- Ordinary beam-table reuse is limited to an unchanged length, so a growing
+  Kamehameha always rebuilds to its current full width. Mode 7 boss arenas keep
+  ki shots visible on late frames instead of culling the whole projectile.
+- Fatal full-screen scenes mask BG3 out of the native line-195 main-screen
+  write. This removes the Mana Beast death transition's alternating UI noise
+  without changing the interrupt or the timeline.
+- Town fire sequences retrigger the sustained roar every 96 frames while the
+  houses burn. The fatal-beast and orbit montage regressions pass.
+
 ## SNES audio: Genesis-style Kamehameha release (2026-10-30)
 
 - Rebuild the Kamehameha release (`$EA`, SSJ `$F0`) as a Genesis-style laser

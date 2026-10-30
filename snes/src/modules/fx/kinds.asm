@@ -102,7 +102,13 @@ fx_k_ki:
 	; yields its drawing. Projectile motion and collisions remain native.
 	JSR fx_vline
 	CMP.w #180
-	BCS .culled
+	BCC .draw
+	; Mode 7 boss arenas keep their projectiles visible even on a late frame;
+	; there is no aura for the shots to crowd out. Ground extras still yield.
+	LDA $29
+	AND.w #$0004
+	BEQ .culled
+.draw
 	; In a crowded picture, extra shots yield before they push a flame or a
 	; party sprite over the PPU's per-line sliver budget. Gameplay projectiles
 	; and collisions are independent of this drawing bound.

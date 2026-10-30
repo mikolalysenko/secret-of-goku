@@ -1291,3 +1291,13 @@ of 39 consecutive grabs were identical in a measurement).
   `FIELD_OBJ_A`, so they share the hazard wherever slot 5 can hold an effect.
   A core service returning the claim mask (as `fx_native_mask` computes it)
   would serve every claimant.
+
+## Beam growth and boss-arena projectiles — October 30, 2026
+
+The ordinary polygon's late-frame table reuse now requires an unchanged
+length in addition to the same direction and colour. A growing wave always
+rebuilds to its current full width instead of retaining an older narrow
+picture. Mode 7 boss arenas bypass the late ki-shot cull so their projectiles
+remain visible; ground scenes retain the crowded extra-shot bound. The
+`beast-ki` native-cell case verifies visible shots and clean cell ownership
+in the Mana Beast arena.
