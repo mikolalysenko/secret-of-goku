@@ -185,9 +185,9 @@ fx_poly_beam:
 	CLC
 	RTS
 .build
-	LDA !fxp_len
-	CMP.l !fx_pkey+4
-	BNE .build_new               ; growth always reaches the current full width
+	LDA.l !fx_pkey+8
+	CMP.w #$FFFF
+	BEQ .build_new               ; the last frame already kept older tables
 	LDA.l !fx_s
 	EOR.l !fx_pkey+8
 	AND.w #$000F
@@ -199,7 +199,11 @@ fx_poly_beam:
 	BCC .build_new
 	; A long wave changes every frame. On a late frame, retain the last
 	; complete HDMA picture for one update instead of rebuilding past NMI.
-	; The old key remains, so the next affordable frame rebuilds the new pose.
+	; fx_poly_key has already stored this pose, so mark the tables stale:
+	; the next frame rebuilds whatever its timing, and a growing wave is
+	; never more than a frame short of its full length and width.
+	LDA.w #$FFFF
+	STA.l !fx_pkey+8
 	LDA.l !fx_pshown
 	STA.l !fx_preuse
 	JSR fx_poly_kind
@@ -690,12 +694,19 @@ fx_poly_rows:
 .changed
 	LDA.l !fx_poly_on
 	BEQ .build                   ; a cold effect has no completed table to reuse
+	LDA.l !fx_pkey+8
+	CMP.w #$FFFF
+	BEQ .build                   ; the last frame already kept older tables
 	JSR fx_frame_vline
 	CMP.w #140
 	BCC .build
 	; A late crowded frame keeps the last complete strip for one update rather
-	; than rebuilding both HDMA tables past NMI. Its old key still requests a
-	; rebuild on the next frame with time; no sprites or blank picture are used.
+	; than rebuilding both HDMA tables past NMI; no sprites or blank picture
+	; are used. fx_poly_key has already stored this pose, so mark the tables
+	; stale: the next frame rebuilds whatever its timing (a beam that only
+	; ever met late frames otherwise kept its first 64 px picture).
+	LDA.w #$FFFF
+	STA.l !fx_pkey+8
 	LDA.l !fx_pshown
 	STA.l !fx_preuse
 	LDA.w #$0002

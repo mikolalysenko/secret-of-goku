@@ -378,10 +378,11 @@ record the tick saw at `$32:6290`.
 
 ## Crowded beam presentation — October 29, 2026
 
-Ordinary long waves can reuse a complete HDMA table after line 80 only when
-both length and direction/colour still match, so growth always rebuilds to
-full width. The opposed-wave renderer can reuse one after line 120; the
-latter invalidates its key so the next affordable frame rebuilds. Decorative edge cells defer
+Ordinary long waves can reuse a complete HDMA table after line 80 when the
+direction and colour still match; the opposed-wave renderer can reuse one
+after line 120. Since October 30 either reuse lasts one frame: the key is
+invalidated and the next frame rebuilds whatever its timing (fx.md, Late-frame
+table reuse lasts one frame). Decorative edge cells defer
 after line 140 while the polygon and palm orb remain. This avoids the 87-line
 polygon rebuild and the larger edge-assembly bursts on frames that cannot
 afford them, without changing damage, clash logic or either fighter's art

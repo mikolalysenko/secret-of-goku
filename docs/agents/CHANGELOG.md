@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Beams reach their full length on crowded frames (2026-10-30)
+
+- Fix Kamehameha and full-wave pictures that froze short of the screen. The
+  late-frame HDMA table reuse let the polygon key describe tables that were
+  never built, so a beam that met only late frames kept its first picture:
+  the full-charge Kamehameha in the `charge` case stayed 64 px instead of
+  320, and a Super Saiyan full wave stayed 96 px long and 26 px wide. Reuse
+  now invalidates the key and lasts one frame; the paired clash renderer gets
+  the same one-frame cap. The earlier "growth always rebuilds" length check
+  never fired and is removed.
+- Validation: polygon traces in the `charge` case and a Super Saiyan wave;
+  fx `beams` and `clash` pass; the Vegeta fight replays exactly (28 known
+  intro misses). CPU misses: `charge` 0 → 1 and `thanatos-fight` 109 → 109
+  over offsets 0-4; the Super Saiyan wave in a crowded field 22 → 26.
+
 ## Burning-town roar with the new Kamehameha release (2026-10-30)
 
 - The cosmic montage's town fires play the roar row (the release arc alone:

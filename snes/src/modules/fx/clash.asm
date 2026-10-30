@@ -197,7 +197,12 @@ fx_poly_dual:
 	BEQ +
 	JMP .no
 +	STZ !fxc_changed
-	LDA !d_ks
+	LDA.l !fx_pkey
+	INC
+	BNE +
+	LDA.w #$8000                 ; the last frame kept older tables: build now
+	STA !fxc_changed
++	LDA !d_ks                    ; (bit 15 clear: never the invalid $FFFF)
 	%fx_dual_key(0)
 	LDA !fxc_one+!XC_Y
 	%fx_dual_key(2)
@@ -218,13 +223,16 @@ fx_poly_dual:
 	STA.l !fx_preuse
 	BRA .shown
 .build
+	LDA !fxc_changed
+	BMI .build_new
 	LDA.l !fx_poly_on
 	BEQ .build_new
 	JSR fx_frame_vline
 	CMP.w #120
 	BCC .build_new
-	; Keep the last complete opposed-wave picture on a crowded frame. The
-	; invalidated key forces a rebuild as soon as the frame has room.
+	; Keep the last complete opposed-wave picture on a crowded frame, for
+	; one update: the invalidated key makes the next frame rebuild whatever
+	; its timing, so a struggle on late frames cannot freeze its picture.
 	LDA.w #$FFFF
 	STA.l !fx_pkey
 	LDA.l !fx_pshown

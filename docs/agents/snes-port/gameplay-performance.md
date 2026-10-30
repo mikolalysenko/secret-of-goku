@@ -1844,7 +1844,8 @@ beam/impact frames.
   preserves the assembly ID across this gate, so the gallery's cold rings and
   all allowed effects remain valid.
 - Changed strip polygons can reuse the previous completed HDMA table on a late
-  frame. Scenery continuation runs only when fewer than eight scanlines elapsed
+  frame (for one frame only since October 30: fx.md, Late-frame table reuse
+  lasts one frame). Scenery continuation runs only when fewer than eight scanlines elapsed
   since destroy's frame stage, and new planning defers after line 180. Punch
   warm-up preparation yields after line 120; the optional palm orb yields after
   line 190, while ki shots yield after line 180 and hit assemblies and impact

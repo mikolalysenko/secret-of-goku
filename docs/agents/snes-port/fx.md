@@ -1294,10 +1294,38 @@ of 39 consecutive grabs were identical in a measurement).
 
 ## Beam growth and boss-arena projectiles — October 30, 2026
 
-The ordinary polygon's late-frame table reuse now requires an unchanged
-length in addition to the same direction and colour. A growing wave always
-rebuilds to its current full width instead of retaining an older narrow
-picture. Mode 7 boss arenas bypass the late ki-shot cull so their projectiles
+The ordinary polygon's late-frame table reuse was meant to require an
+unchanged length; that check compared against a key word `fx_poly_key` had
+already overwritten, so it never fired (see the next section for the fix).
+Mode 7 boss arenas bypass the late ki-shot cull so their projectiles
 remain visible; ground scenes retain the crowded extra-shot bound. The
 `beast-ki` native-cell case verifies visible shots and clean cell ownership
 in the Mana Beast arena.
+
+## Late-frame table reuse lasts one frame — October 30, 2026
+
+`fx_poly_key` stores every changed key word as it compares, before any
+build. The late-frame shortcuts (the full wave after line 80 in
+`fx_poly_beam`, strip beams after line 140 in `fx_poly_rows`) showed the
+previous tables but left the validity word (`fx_pkey+8`) describing them.
+The next frame with an unchanged pose then matched the key and kept the old
+tables for good. In the `charge` gameplay case every frame after the first
+was late: the full-charge Kamehameha stayed a 64 px stub instead of growing
+to 320 px. A Super Saiyan full wave in the same field stayed at 96 px with a
+26 px half-width instead of reaching the screen edge at 80.
+
+Each shortcut now writes `$FFFF` to `fx_pkey+8`, and a stale key always
+builds, so a late frame keeps the old picture for one update at most. The
+opposed-wave renderer (`clash.asm`) already invalidated its key; it now also
+builds on the frame after a reuse (`fxc_changed` bit 15), so a struggle on
+late frames cannot freeze either. Tracing the key against the last built
+tables (`fx_poly_build`/`fx_poly_rows_build`) shows the strip beam growing
+64 to 320 px and the full wave reaching 193 px by 80, never more than one
+frame behind.
+
+Cost, CPU misses over start offsets 0-4: `charge` 0 → 1 (offset 4), and
+`thanatos-fight` 109 → 109. The Vegeta fight replays exactly with its 28
+known intro misses. A Super Saiyan full wave in the crowded rabite field
+(transform, full charge, release; not a suite case) goes 22 → 26: a full-size
+wave rebuild costs about 160 lines of `fx_frame`, and its growth and
+collapse frames now pay it. fx `beams` and `clash` pass.
