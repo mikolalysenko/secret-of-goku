@@ -8,7 +8,7 @@ import {resolve} from 'node:path';
 import {assemble} from './audio-spc700.mjs';
 import {readWav,resample} from './audio-brr.mjs';
 import {buildStreamClip,CHUNK_BYTES,CHUNK_SAMPLES} from './audio-stream.mjs';
-import {residentAsm,nativeMapAsm} from './audio-resident.mjs';
+import {residentAsm,nativeMapAsm,ROAR_ID} from './audio-resident.mjs';
 import {customEdlCaps} from './audio-custom.mjs';
 import {buildResident7,resident7Asm,RESERVE} from './audio-resident7.mjs';
 import {buildExtended8,extended8Asm} from './audio-extended8.mjs';
@@ -278,6 +278,9 @@ export async function generate({rom,repo,outDir}){
  for(const s of bank.shots)ids.push(`!AUDIO_SFX_${s.name.replace(/[A-Z]/g,m=>'_'+m).toUpperCase()} = ${s.id}`);
  for(const l of bank.loops)ids.push(`!AUDIO_LOOP_${l.name.replace(/[A-Z]/g,m=>'_'+m).toUpperCase()} = ${l.id}`);
  for(const g of SONGS)ids.push(`!AUDIO_SONG_${g.name} = $${g.id.toString(16).toUpperCase()}`);
+ // Custom-sample cartridges: the release's arc alone as a native effect row
+ // (command 02 through core_sound_queue), a roar without the beam's buzz.
+ ids.push(`!AUDIO_NATIVE_ROAR = $${ROAR_ID.toString(16).toUpperCase()}`);
  ids.push('endif');
  writeFileSync(resolve(outDir,'ids.asm'),ids.join('\n')+'\n');
  const used=bank.banks.reduce((a,b)=>a+b.used,0);

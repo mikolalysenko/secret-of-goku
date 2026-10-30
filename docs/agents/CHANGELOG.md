@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES audio: Genesis-style Kamehameha release (2026-10-30)
+
+- Rebuild the Kamehameha release (`$EA`, SSJ `$F0`) as a Genesis-style laser
+  on its same two voices and length. The beam arc plays an octave higher.
+  Boot instrument 0 adds a buzz that ignites near 850 Hz, sweeps three
+  octaves down, then holds under the driver's square trill and rises.
+  Super Saiyan falls deeper, trills slower and buzzes louder. The music
+  duck under the release deepens from −5.0 to −8.5 dB.
+- The release measures about 2 LU louder (2.4 on small speakers), with
+  about 7 dB more 2–8 kHz energy through the sustain. Peaks and every
+  stress mix keep their headroom. No samples, reservation or 65816 code
+  change; the define-0 rollback ROM is byte-identical.
+- The retired spring row `$7D` plays the arc alone (`!AUDIO_NATIVE_ROAR`):
+  a one-voice roar without the buzz or duck.
+
 ## Popoi explosion presentation (2026-10-29)
 
 - Replace the generic power-burst cue with the faster comic balloon-pop and

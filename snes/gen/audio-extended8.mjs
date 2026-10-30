@@ -23,7 +23,10 @@ export function buildExtended8(compact){
  const ptrs={};
  for(const id of [0xEA,0xEB,0xEF,0xF0]){
   let seq=Array.from(source(id).bytes);
-  if(id===0xEA||id===0xF0){const p=seq.indexOf(0xE4);assert.equal(seq[p+1],3);seq[p+1]=4;}
+  // Both releases share one arc track: share its extended copy too.
+  if(id===0xF0&&source(id).addr===source(0xEA).addr){ptrs[id]=ptrs[0xEA];continue;}
+  // The 12 kHz arc plays an octave above the compact 6 kHz one's octave.
+  if(id===0xEA||id===0xF0){const p=seq.indexOf(0xE4);assert.equal(seq[p+1],4);seq[p+1]=5;}
   // The 176 ms one-shot ends naturally; release native ownership at
   // 24 ticks instead of holding a silent voice for the old 830 ms tail.
   else seq=[0xD2,id===0xEB?0xB8:0x72,0xEA,0x33,0xE4,4,0x8F,0xF2];

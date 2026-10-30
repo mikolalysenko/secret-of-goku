@@ -22,20 +22,40 @@ test('Super Saiyan has an immediate broadband crack and a falling flash thump on
  }
 });
 
-test('both Kamehameha releases keep two voices and a falling impact audible above sub-bass',()=>{
+test('both Kamehameha releases ignite a falling, trilling buzz over a bright arc on two voices',()=>{
  for(const extended of [false,true])for(const id of [0xEA,0xF0]){
   const h=createApu({rom});h.ms(60);if(extended)installExtended(h,rom);
-  h.nativeCmd(2,id,15,0x88);const pitches=[];let maxVoices=0;
+  h.nativeCmd(2,id,15,0x88);const buzz=[],arc=[];let maxVoices=0;
   for(let ms=0;ms<1300;ms++){
    h.ms(1);const mask=h.ram[0xAE];maxVoices=Math.max(maxVoices,mask.toString(2).replaceAll('0','').length);
-   for(let v=0;v<8;v++)if((mask&(1<<v))&&h.dspReg(v*16+8)>0&&h.dspReg(v*16)>0&&h.dspReg(v*16+4)===0x31)
-    pitches.push((h.dspReg(v*16+2)|(h.dspReg(v*16+3)<<8))*32000/4096);
+   for(let v=0;v<8;v++)if((mask&(1<<v))&&h.dspReg(v*16+8)>0&&h.dspReg(v*16)>0){
+    const hz=(h.dspReg(v*16+2)|(h.dspReg(v*16+3)<<8))*32000/4096,src=h.dspReg(v*16+4);
+    if(src===0)buzz.push([ms,hz]);else if(src===0x32)arc.push([ms,hz]);
+   }
    assert.equal(h.dspReg(0x3D),0,'no shared noise-clock changes');
   }
-  assert.equal(maxVoices,2);assert.equal(h.ram[0xAE],0);
-  assert.ok(pitches[0]>7000&&pitches[0]<9000,'impact starts near 8 kHz decoding');
-  assert.ok(pitches.at(-1)<pitches[0]*.6,'impact falls into a deep body');
+  assert.equal(maxVoices,2);assert.equal(h.ram[0xAE],0);assert.equal(h.dspReg(0x2D),0,'PMON clear');
+  // Boot instrument 0's 64-sample cycle: about 850 Hz falling below 150 Hz.
+  const at=ms=>buzz.find(p=>p[0]>=ms)[1],held=buzz.filter(p=>p[0]>=300&&p[0]<900).map(p=>p[1]);
+  assert.ok(at(0)>45000&&at(0)<64000,`buzz ignites near 54 kHz decoding (${at(0)})`);
+  assert.ok(at(260)<at(0)/(id===0xF0?6.5:5.5),'three-octave ignition sweep');
+  assert.ok(Math.max(...held)/Math.min(...held)>1.1,'square trill holds the buzz rough');
+  assert.ok(buzz.at(-1)[0]>1000&&arc.at(-1)[0]>1000,'buzz and arc sustain the whole wave');
+  // The arc plays at twice its sample rate: 12 kHz compact, 24 kHz extended.
+  const base=extended?24000:12000;
+  assert.ok(Math.abs(arc[0][1]-base)<base*.03&&arc.at(-1)[1]>arc[0][1]*1.1,'bright arc rising');
  }
+});
+
+test('the roar row plays the release arc alone, on one voice and without the duck',()=>{
+ const h=createApu({rom});h.ms(60);
+ loadSong(h,rom,{...romSong(rom,0x1C),echo:romEcho(rom,10),song:0x1C,p2:10,p3:255});h.ms(1000);
+ const volume=h.ram[0x84],musicMask=h.ram[0xAD];
+ h.nativeCmd(2,0x7D,15,0x88);h.ms(100);
+ const voices=[...Array(8).keys()].filter(v=>h.ram[0xAE]&(1<<v));
+ assert.equal(voices.length,1);assert.equal(h.dspReg(voices[0]*16+4),0x32,'the arc');
+ assert.equal(h.ram[0x84],volume,'no music duck');
+ h.ms(1200);assert.equal(h.ram[0xAE],0);assert.equal(h.ram[0xAD],musicMask);
 });
 
 test('short and first-reveal transformations keep headroom with both beds and return the music voices',()=>{

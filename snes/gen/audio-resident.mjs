@@ -49,7 +49,9 @@ export function residentAsm(rom){return storageAsm(rom,RESIDENT);}
 // Custom-sample cartridges: TELEPORT_IN plays the resident $EF, and round
 // nine's IMPACT (ki/beam contacts) plays the resident ki contact in the
 // empty retail row $7E instead of retail $38 (unchanged for any other user).
-export const KI_CONTACT_ID=0x7E,SPRING_ID=0x7D;
+// Row $7D (round nine's spring, retired) holds the release arc alone: a
+// one-voice roar without the beam's buzz (AUDIO_NATIVE_ROAR, audio/ids.asm).
+export const KI_CONTACT_ID=0x7E,SPRING_ID=0x7D,ROAR_ID=SPRING_ID;
 export const customNativeIds=()=>NATIVE_IDS.map((v,i)=>i===17?0xEF:i===6?KI_CONTACT_ID:v);
 export function nativeMapAsm(){
  const custom=customNativeIds();

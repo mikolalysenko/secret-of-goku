@@ -1,6 +1,15 @@
 # Resident custom samples: cartridge option and storage audit
 
-## Current teleport and power impacts (2026-10-24)
+## Current Kamehameha release (2026-10-30)
+
+The release is a Genesis-style laser built from samples already in ARAM:
+the beam arc an octave higher, plus boot instrument 0 as a trilling buzz
+with a three-octave ignition sweep. It ducks the music 8.5 dB. No BRR,
+reservation, echo cap or optional-bank size changes. The permanent bank
+uses 2,299 of 2,304 bytes. See
+[the design, measurements and checks](audio.md#genesis-style-kamehameha-release-2026-10-30).
+
+## Teleport and power impacts (2026-10-24)
 
 Instant Transmission is a dry 96 ms compact / 176 ms optional one-shot
 from the original recording's onset, with a quieter arrival and no looped

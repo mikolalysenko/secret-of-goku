@@ -7,7 +7,7 @@ import {resolve,join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {readWav,resample,brrEncode} from './audio-brr.mjs';
 import {assemble} from './audio-spc700.mjs';
-import {RESIDENT,customNativeIds,KI_CONTACT_ID} from './audio-resident.mjs';
+import {RESIDENT,customNativeIds,KI_CONTACT_ID,ROAR_ID} from './audio-resident.mjs';
 import {residentLayout,effectOffset} from './audio-resident-storage.mjs';
 import {DESIGNS8,rumble8,arc8,teleport8} from './audio-design8.mjs';
 import {chargePulse,CHARGE_FRAMES,CHARGE_RATE,CHARGE_SCALE} from './audio-charge.mjs';
@@ -22,10 +22,19 @@ export const IDS=customNativeIds();
 // Song volume per start/target nibble: $0C instead of the driver's $11
 // lowers every song 3.0 dB (12/17); fades keep their shape.
 export const MUSIC_STEP=0x0C;
-// The Kamehameha's release ducks the song a further 5.0 dB (×$90/256) and
-// the driver's fade restores it linearly over 64 steps of 31.5 ms (2.0 s),
-// so the wave's whole body stays over the music as the PC's beam does.
-export const DUCK=0x90,DUCK_STEPS=64;
+// The Kamehameha's release ducks the song a further 8.5 dB (×$60/256) and
+// the driver's fade restores it linearly over 64 steps of 31.5 ms (2.0 s):
+// like a Genesis effect taking over music channels, the beam owns the mix.
+export const DUCK=0x60,DUCK_STEPS=64;
+// Round ten: the release as a Genesis-style laser, on the same two voices
+// and 108 ticks. Voice 1, shared by both forms: the arc an octave above its
+// wave rate (a brighter roar, with the song echo) rising three semitones.
+// Voice 2: boot instrument 0's 64-sample pulse as the beam's buzz. It ignites
+// near 0.9 kHz, sweeps down three octaves in 24 ticks, then holds under a
+// fast square trill (D7: ±1 semitone, flipping every `trill` ticks) while it
+// rises three semitones. SSJ falls three semitones deeper, trills slower and
+// buzzes louder. No new samples, noise clock or CPU work.
+export const RELEASE={arc:0xD8,buzz:new Map([[0xEA,{volume:0xB8,sweep:-36,trill:1}],[0xF0,{volume:0xC8,sweep:-39,trill:2}]])};
 // Driver note bytes: index×15 + length slot; ties use index 12.
 const LENGTH={192:0,144:1,96:2,64:3,72:4,48:5,32:6,36:7,24:8,16:9,12:10,8:11,6:12,4:13,3:14};
 const note=(index,ticks)=>index*15+LENGTH[ticks],tie=ticks=>180+LENGTH[ticks];
@@ -127,9 +136,9 @@ export function buildResident7(){
  for(const a of alias)for(const s of extension.segments)assert.ok(a.addr+a.bytes.length<=s.addr||s.addr+s.bytes.length<=a.addr,'blast alias overlaps rare-line extension');
  metadata.push(...alias);
  const ins=(i,vol,octave=samples[i].octave)=>[...(vol===undefined?[]:[0xD2,vol]),0xEA,0x30+i,0xE4,octave];
- const beam=full=>[0xE2,...ins(2,DESIGN8===1?0xE0:0xD0),...(full?[0xE9,0xE5]:[]),0xD6,96,3,0x89,0xD3,12,0,0xBE,0xF2];
+ const releaseArc=[0xE2,...ins(2,contactGain(RELEASE.arc),4),0xD6,96,3,note(9,96),0xD3,12,0,tie(12),0xF2];
  const tracks=new Map([
-  [0xEA,beam(false)],[0xF0,beam(true)],
+  [0xEA,releaseArc],
   [0xEF,[...ins(3,0x72),note(9,16),0xF2]],
   [0xED,[...ins(0),0x87,0xF0,0,0xB4,0xF1]],
   [0xEE,[...ins(1),0x87,0xF0,0,0xB4,0xF1]],
@@ -149,12 +158,17 @@ export function buildResident7(){
  ]);
  const pointers=[],sequences=[];
  for(const [id,seq] of tracks){const pair=new Uint8Array(4);word(pair,0,at);pointers.push({addr:0x2C00+id*4,bytes:pair});sequences.push({id,addr:at,bytes:seq});bank.set(seq,at-SAMPLE_BASE);at+=seq.length;}
+ // SSJ's release points at the same arc bytes; only its buzz differs.
+ const arcAt=sequences.find(s=>s.id===0xEA).addr,ssjPair=new Uint8Array(4);word(ssjPair,0,arcAt);
+ pointers.push({addr:0x2C00+0xF0*4,bytes:ssjPair});sequences.push({id:0xF0,addr:arcAt,bytes:releaseArc,shared:0xEA});
+ // The retail-empty roar row plays that arc alone on one voice (full gain in
+ // beds.s, no buzz and no duck), for a roar that is not a Kamehameha.
+ const roarPair=new Uint8Array(4);word(roarPair,0,arcAt);pointers.push({addr:0x2C00+ROAR_ID*4,bytes:roarPair});
  const layout=resident7Layout(readFileSync(join(root,'rom/secret-of-mana-us.sfc')),tracks);
- // The release thump starts at 8 kHz and drops an octave: an audible
- // chest hit under the arc instead of the old, mostly sub-bass rumble.
- // Keep the same two voices, durations and native F2 cleanup.
- for(const [id,volume,ticks] of [[0xEA,0xE0,20],[0xF0,0xF8,22]]){
-  const seq=[0xD2,contactGain(volume),0xEA,0x31,0xE4,3,0xD6,ticks,0xF4,0xD3,ticks,0,0x8F,0xF2];
+ // The release buzz (RELEASE): ignition sweep, then trill and rise. The same
+ // 108 ticks and native F2 cleanup as the arc; F2 also clears its echo bit.
+ for(const [id,{volume,sweep,trill}] of RELEASE.buzz){
+  const seq=[0xD2,contactGain(volume),0xEA,0,0xE4,6,0xD6,24,sweep&255,note(9,24),0xD7,0,trill,0xFF,0xD6,72,3,tie(72),0xD3,12,0,tie(12),0xF2];
   word(pointers.find(p=>p.addr===0x2C00+id*4).bytes,2,at);sequences.push({id:null,body:id,addr:at,bytes:seq});bank.set(seq,at-SAMPLE_BASE);at+=seq.length;
  }
  const swing=layout.tracks.find(t=>t.id===0xE5);

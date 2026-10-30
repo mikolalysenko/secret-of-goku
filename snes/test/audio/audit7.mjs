@@ -45,7 +45,7 @@ for(const tag of ['r4','r6','r7']){
   const {pcm,...metrics}=measure(rom,id,{echo:name==='beam'});dry.push({tag,name,...metrics,rmsDbFS:10*Math.log10(energy(pcm.slice(0,Math.round(metrics.durationMs*32)))),...(name==='beam'?{sourceAttackCorrelation:attackCorrelation(pcm)}:{})});
  }
 }
-const report={reserve:b.reserve,used:b.used,free:b.reserve-b.used,sampleBytes:b.sampleBytes,sequenceBytes:b.sequences.reduce((n,s)=>n+s.bytes.length,0),codeBytes:b.codeBytes,samples,echo,reservationOptions:options,
+const report={reserve:b.reserve,used:b.used,free:b.reserve-b.used,sampleBytes:b.sampleBytes,sequenceBytes:b.sequences.filter(s=>!s.shared).reduce((n,s)=>n+s.bytes.length,0),codeBytes:b.codeBytes,samples,echo,reservationOptions:options,
  perSongExtension:{compact2048Fallback:compactFallback,extended2304Fits:64-compactFallback.length,additional1024Fits:perSong.filter(s=>s.additionalBytes>=1024).map(s=>s.id),compactRequired:perSong.filter(s=>s.additionalBytes<1024),all:perSong},rateOptions,dry,
  method:'Energy loss compares mean square before/after windowed-sinc anti-alias resampling, before limiting/BRR. It is bandwidth retention, not a perceptual score. Loop RMS uses circular 20 ms windows of decoded BRR. Dry effects use the original driver/S-DSP with identical command and echo context.'};
 writeFileSync(join(root,'analysis7.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({reserve:report.reserve,used:report.used,echo:report.echo,additional1024Fits:report.perSongExtension.additional1024Fits.length,compactRequired:report.perSongExtension.compactRequired},null,2));

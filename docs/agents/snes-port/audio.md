@@ -1,5 +1,99 @@
 # Audio module: native SNES effects and music
 
+## Genesis-style Kamehameha release (2026-10-30)
+
+The maintainer found the full-power Kamehameha too quiet and asked for
+something close to a Mega Drive/Genesis big-laser effect (the Sonic 3 &
+Knuckles beam). This supersedes the release (`$EA`/`$F0`) descriptions in
+the sections below: round eight's arc, round nine's thump volumes and the
+8 kHz thump of 2026-10-24. It is original synthesis on data already in ARAM,
+not a sample taken from a Sega game.
+
+**Diagnosis.** The old release already peaked at −2 dBFS on its own, so a
+louder volume byte could not help. Its 6 kHz arc at unity rate stops near
+3 kHz: the 2–5 kHz presence band sat about 10 dB under the mids, with
+nothing above 5 kHz. Most of its energy was sub-bass to 2 kHz, which small
+speakers lose. In spectrograms it was a flat one-second slab of noise with
+no ignition, sweep or pulse.
+
+**Design.** Both voices and the 108-tick length are unchanged.
+
+- Voice 1, shared by both forms: the arc an octave above its wave rate
+  (12 kHz decoding compact, 24 kHz with the optional bank's 12 kHz arc),
+  with the song echo. It rises three semitones; a 12-tick fade ends it.
+- Voice 2: the buzz, boot instrument 0's 64-sample pulse at octave 6. It
+  ignites near 850 Hz and sweeps down 36 semitones in 24 ticks (SSJ 39, to
+  about 124 Hz). The driver's `D7` vibrato is a square trill: ±1 semitone,
+  flipping every tick (52 Hz roughness; SSJ every 2 ticks). It then rises
+  three semitones over 72 ticks and fades in 12.
+- Volumes: arc `$D8`, buzz `$B8` (SSJ `$C8`). `RELEASE` in
+  `snes/gen/audio-resident7.mjs` holds the parameters.
+- The release duck is now −8.5 dB (`DUCK` = `$60`, was `$90`, −5.0 dB),
+  restored over the same 64 steps (2.0 s). Like a Genesis effect taking
+  over music channels, the beam owns the mix.
+
+**Rejected after measurement.** DSP noise as the grit layer measures
+louder at first, but its samples are uniform: with echo the mix crest
+factor reaches about 9.5 dB, so at the headroom cap it reads as hiss, not
+power. The pre-saturated arc has a 2.8 dB crest. Pitch modulation (`E0`,
+PMON) from the arc smears the buzz into noise. From noise at the shared
+10.7 kHz contact clock it is inaudible. Arc at octave 5 and instrument 4
+or 6 buzzes lose the ignition sweep or its identity. One louder notch
+(arc `$E0`, buzz `$C0`/`$D0`) gains only 0.4 LU and pushes the optional
+bank's release past the 30,000 peak bound.
+
+**Driver notes.** `FA` (goto) consumes its operands but never jumps in an
+effect track (`$0905`: X ≥ `$10` returns), so the forms share the arc by
+pointer instead. `E0`/`E1` work on effect tracks (`$C1` mask), and `F2`
+clears PMON, echo and noise for the voice (`$09D6`).
+
+**Bytes.** The permanent bank still uses 2,299 of 2,304 bytes. One shared
+arc track (16 bytes) plus two buzz tracks (23 each) replace the old four
+tracks (62 bytes in both). The optional bank shares one arc copy for both
+forms; its transfer stays at 4,176 bytes. The retired spring row `$7D`
+now points at the arc alone. That gives a one-voice roar at full gain
+(the existing `$7D` comparison in `beds.s`), with no buzz and no duck, for
+scenes that want the old burning-roar role without a laser. Modules send
+`02 !AUDIO_NATIVE_ROAR 0F 88` through `core_sound_queue`
+(`audio/ids.asm`). The 65816 code and the define-0 rollback ROM are
+byte-identical to before.
+
+**Loudness.** `power-preview.mjs`, compact bank, field-song echo, cue
+alone. LU are against the field song's integrated loudness, as in round
+nine (−24.96 LUFS):
+
+| Cue | Momentary | Small speaker | 0.5–5 kHz band | Short-term (3 s) | Peak |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Release, before → after | −8.7 → −6.9 LUFS (+16.3 → +18.1 LU) | −9.9 → −7.7 | −12.2 → −10.5 dB | −13.9 → −12.0 | −1.9 → −1.4 dBFS |
+| SSJ release, before → after | −8.8 → −6.7 | −10.1 → −7.5 | −12.3 → −10.3 | −13.9 → −11.8 | −2.0 → −1.0 |
+| Extended release | −7.9 → −6.5 | −8.9 → −7.3 | −11.4 → −10.5 | −13.1 → −11.6 | −1.6 → −1.2 |
+| Extended SSJ release | −8.2 → −6.4 | −9.2 → −7.2 | −11.7 → −10.4 | −13.4 → −11.5 | −1.5 → −0.9 |
+
+The release is about 2 LU louder (2.4 on small speakers), and the music
+under it drops another 3.5 dB. Per 160 ms window, the 2–8 kHz band rises
+about 7 dB through the whole sustain.
+
+**Validation.** Strict build. All 63 audio unit/APU tests pass. The power
+test now checks the ignition (about 54 kHz decoding, falling more than
+5.5×/6.5×), the trill (over 10% pitch spread in the hold), the arc at 2×
+its sample rate in both banks, two voices, PMON and noise clear. A new
+case checks the roar row: one voice, the arc, no duck. The arrangement
+stress mixes peak at −1.62 to −2.34 dBFS (bound −0.77). Every Mesen audio
+case passes: render, prefetch, loads, loads-boot, native, music, rare,
+rare-control, rare-boot, stream, songs, arrival, imported and
+weapon-charge (34 phases). The define-0 rollback ROM is byte-identical.
+
+Gameplay `charge` (100 frames of L+Y, then a full release among Rabites),
+offsets 0–9: 1 miss in 2,400 frames before and after, at the same offset
+(8). `thanatos-fight` (six full releases in the open full-party timing
+case), offsets 0–4: 24/23/22/21/19 misses in both builds. Palette,
+stamina, sprite-overflow and vblank checks are clean.
+
+Listening: `.local/snes-test/audio/round10/` has before/after WAVs (alone
+and over the field song, compact and extended), `manifest.json` and
+`spectrograms-before-after.png`. Reproduce with
+`node snes/test/audio/power-preview.mjs --before=old.sfc --out=<dir>`.
+
 ## Sharper teleport and power impacts (2026-10-24)
 
 Instant Transmission now uses the opening chirr of the existing DBZ

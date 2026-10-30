@@ -124,7 +124,7 @@ resident_gain:
  BEQ gain_ki
  ; Keep the old comparison's cycles for unrelated effects. Removing it
  ; shifts SPC handshakes enough to add a miss in teleport's phase-2 test.
- ; Row $7D is empty again; no charge activation calls it.
+ ; Row $7D now holds the release arc alone (AUDIO_NATIVE_ROAR).
  CMP A,#$7D
  BEQ gain_full
  CMP A,#$E5
