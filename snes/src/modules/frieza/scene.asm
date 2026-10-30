@@ -545,17 +545,77 @@ fz_explode_popoi:
 	LDA.w #44
 	STA $E445
 	; Fall through to the shared surprised expression.
+; Popoi's shocked face: his native front-facing shout (frame $D8: mouth wide
+; open, hair flared, the whole figure), the first frame of the game's own
+; front-talk action (D1:607F). The game's animation step (C0:F59A) shows the
+; frame of the sequence step at +$16 and waits +$12 frames before the next
+; one; each frame the step pointer is aimed back at that "1C D8" step and
+; run again, which also lists its four tiles for the vblank. The sequence
+; start (+$18) alone shows nothing, and facing 0 is up, away from the
+; camera. During the event the game does not step Popoi's animation; it
+; re-forces his last scripted one (the guard pose of his entrance) every 5
+; frames through C0:B24A, which leaves a forced animation (+$1C nonzero)
+; alone. The flag clears at the end of his next sequence (C0:F925).
+!FZ_POPOI_SHOCK_STEP = $607F             ; D1:607F: 1C D8
+!FZ_POPOI_SPECIES = 130                   ; the sprite's own species
 fz_popoi_panic:
-	LDA.w #0
+	SEP #$20
+	LDA.b #1
 	STA $E410                         ; face the camera
-	STA $E431
-	STA $E40A
-	STA $E490                         ; no death, petrify or spirit presentation
-	STA $E491
-	LDA.w #$00D7
-	STA $E580                         ; ordinary companion, not the spirit actor
-	LDA.w #$5C31                      ; open-mouth surprise
+	STZ $E411                         ; requested = latched: no native reload
+	STZ $E431
+	STZ $E40A
+	STZ $E590                         ; no death, petrify or spirit presentation
+	STZ $E591
+	LDA.b #!FZ_POPOI_SPECIES
+	STA $E580
+	LDA.b #$80
+	STA $E41C                         ; a forced animation plays (C0:B24A waits)
+	REP #$20
+	LDA.w #!FZ_POPOI_SHOCK_STEP
 	STA $E418
+	STA $E416
+	STZ $E412
+	JMP fz_popoi_step                 ; the event does not step him: show it now
+
+; The game's animation step for Popoi (C0:F59A, its actor-update context:
+; X and $14 the actor, $02 the sequences' bank, D = 0, DB = $7E). It is a
+; near routine: its RTS lands on the RTL at C0:B294, which returns here.
+; It uses direct page $00-$14 as scratch; the event handler (C3) can run
+; inside the event interpreter, so those bytes are kept. A, X, Y are not.
+fz_popoi_step:
+	PHB
+	PHD
+	PHP
+	REP #$30
+	PEA.w $7E7E : PLB : PLB
+	PEA.w $0000 : PLD
+	LDX.w #$14
+-	LDA $00,X
+	PHA
+	DEX : DEX
+	BPL -
+	SEP #$20
+	LDA.b #$D1
+	STA $02
+	REP #$20
+	LDX.w #$0400
+	STX $14
+	PHK
+	PER .back-1
+	PEA.w $B293                       ; RTS -> C0:B294: RTL
+	JML $80F59A
+.back
+	REP #$30
+	LDX.w #$0000
+-	PLA
+	STA $00,X
+	INX : INX
+	CPX.w #$16
+	BCC -
+	PLP
+	PLD
+	PLB
 	RTS
 
 ; lift: Popoi rises to Goku's left, (c.x - 40, c.y + 24) with altitude

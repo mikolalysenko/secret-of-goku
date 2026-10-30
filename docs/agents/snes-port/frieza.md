@@ -211,13 +211,34 @@ of the world's (the same within a cell, repeating per cell).
   leaves free); the alarm is a fixed-colour add of red 2 + alarm to BG1 and
   BG2 in vblank.
 - **Popoi's explosion** (`scene.asm`, `state.asm`, `bind.asm`): the C3 cue
-  uses the comic balloon-pop effect. Popoi shows a big open-mouth surprised
-  expression during the lift and keeps that camera-facing panic frame at 44 px
-  altitude for the whole vanish, instead of dropping into the native spirit
-  sequence. The held state restores the actor descriptor and four body pieces
-  and clears the death/petrify flags. `effects: explode` runs a full-party fixture for 76
-  frames and asserts every one of those fields; `popoi-lift` covers the
-  ordinary lift animation.
+  uses the comic balloon-pop effect. From the lift through the whole vanish
+  Popoi faces the camera in his native front shout, frame `$D8` (mouth wide
+  open, hair flared, the whole figure: the first frame of the standard
+  table's front-talk action, `D1:607F`), held at 44 px altitude instead of
+  dropping into the native spirit sequence. How the hold works
+  (`fz_popoi_panic`, `fz_popoi_step`):
+  - The native animation step (`C0:F59A`) shows the frame of the sequence
+    step at actor `+$16`, lists its tiles for the vblank, and waits `+$12`
+    frames. `+$18` is only the sequence start, `+$26` the shown frame × 2,
+    and facing (`+$10`) 0 is up, 1 down (toward the camera).
+  - During the event the game does not step Popoi's animation at all. It
+    re-forces his last scripted animation (the guard pose of his entrance)
+    every 5 frames through `C0:B24A`, which skips an actor whose forced
+    animation flag `+$1C` is set. The hold sets that flag (`$80`; his next
+    sequence's end clears it, `C0:F925`), aims `+$16` at the `1C D8` step
+    each frame and runs the step itself: a far call into the near routine
+    whose `RTS` lands on the `RTL` at `C0:B294`.
+  - It also keeps his own species (130) and clears his status bytes
+    (`+$190/+$191`, `$E590/$E591`).
+  The earlier holds pinned `+$18` to the side-facing ghost-blink sequence
+  (`$5C31`; before that the side idle, `$5C1C`), faced him up, wrote species
+  `$D7`, and cleared `$E490/$E491`, which are his sprite-piece buffer, not
+  statuses. In the real showdown that left a frozen, partly scrambled guard
+  frame seen from behind. `effects: explode` runs a full-party fixture for
+  76 frames and asserts the held fields and the shown frame; `popoi-lift`
+  asserts the same pose. The lift fixture aims the lift at the browser
+  preset's deck, so Popoi is off-screen for most of its frames; the real
+  showdown (event `$C1` queued on the `late` preset) was checked separately.
 
 ## World-flight picture (`flyby.asm`, `_frieza-flyby.mjs`)
 

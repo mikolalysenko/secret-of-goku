@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Popoi's shocked face in the Frieza showdown (2026-10-30)
+
+- Popoi now faces the camera with his native full-body shout (frame `$D8`,
+  mouth wide open) from the lift through the explosion. The previous hold
+  pinned a sequence start the game does not use for drawing (the side-facing
+  ghost-blink `$5C31`), faced him away, wrote a wrong species (`$D7`) and
+  zeroed his sprite-piece buffer (`$E490/$E491`), so the real cutscene
+  showed a frozen, scrambled guard frame from behind.
+- The hold runs the game's own animation step on the front-talk `1C D8`
+  step and sets the forced-animation flag so the event stops re-forcing his
+  entrance pose every 5 frames. Status clears move to `$E590/$E591`.
+- Validation: the real showdown (event `$C1` from the `late` preset) holds
+  frame `$D8` for every lift and explosion frame, with the same catch-up
+  frames as before; the updated `effects` explode/popoi-lift checks pass
+  and fail on the previous build.
+
 ## Beams reach their full length on crowded frames (2026-10-30)
 
 - Fix Kamehameha and full-wave pictures that froze short of the screen. The

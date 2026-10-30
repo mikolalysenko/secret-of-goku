@@ -197,7 +197,7 @@ function test()
       local y = H.oam(e * 4 + 1)
       if y ~= 0xE0 then o[#o + 1] = string.format('%d:%03X%02X%03X%02X', e, H.oam(e * 4), y, H.oam(e * 4 + 2) | ((H.oam(e * 4 + 3) & 1) << 8), H.oam(e * 4 + 3)) end
     end
-    popoiStates[#popoiStates + 1] = {frame=frame, active=H.r8(0x7EE400), altitude=H.r8(0x7EE445), facing=H.r8(0x7EE410), action=H.r8(0x7EE431), sequence=H.r16(0x7EE418), pose=H.r8(0x7EE40A), mode=H.r8(0x7EE460), flags=H.r8(0x7EE461), status=H.r8(0x7EE490), status2=H.r8(0x7EE491), species=H.r8(0x7EE580), descriptor=H.r16(0x7EE480), parts=H.r8(0x7EE483), sx=H.r16(0x7EE420), sy=H.r16(0x7EE422), oam=table.concat(o, ',')}
+    popoiStates[#popoiStates + 1] = {frame=frame, active=H.r8(0x7EE400), altitude=H.r8(0x7EE445), facing=H.r8(0x7EE410), action=H.r8(0x7EE431), sequence=H.r16(0x7EE418), pose=H.r8(0x7EE40A), mode=H.r8(0x7EE460), flags=H.r8(0x7EE461), status=H.r8(0x7EE590), status2=H.r8(0x7EE591), species=H.r8(0x7EE580), shown=H.r16(0x7EE426), descriptor=H.r16(0x7EE480), parts=H.r8(0x7EE483), sx=H.r16(0x7EE420), sy=H.r16(0x7EE422), oam=table.concat(o, ',')}
     `:''}
     if frame >= target - 2 and frame <= target + 2 then
       local name = string.format('f%05d', frame)
@@ -1326,13 +1326,22 @@ if(want('effects')&&existsSync(scenarioRoot)){
     cleanupRom(rom);
     const res=r.results??{};
     const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+    // Popoi's shocked face: his front shout (native frame $D8, +$26 = frame
+    // * 2) from the front-talk step D1:607F, facing the camera (1), his own
+    // species (130) and no status (+$190/+$191).
+    const shocked=s=>s.facing===1&&s.sequence===0x607F&&s.shown===0xD8*2&&s.status===0&&s.status2===0&&s.species===130;
     if(name==='explode'){
       if((res.popoiStates??[]).length<70)failures.push('the explosion did not cover the full vanish');
       for(const s of res.popoiStates??[]){
         // A direct scene import has one setup frame before its first tick.
-        if(s.frame>1&&(s.active!==1||s.altitude!==44||s.facing!==0||s.sequence!==0x5C31||s.status!==0||s.status2!==0||s.species!==0xD7)){
+        if(s.frame>1&&(s.active!==1||s.altitude!==44||!shocked(s))){
           failures.push(`Popoi left the held panic pose at frame ${s.frame}`);break;
         }
+      }
+    }
+    if(name==='popoi-lift'){
+      for(const s of res.popoiStates??[]){
+        if(s.frame>1&&!shocked(s)){failures.push(`Popoi is not shocked at lift frame ${s.frame}`);break;}
       }
     }
     const notes=[];
