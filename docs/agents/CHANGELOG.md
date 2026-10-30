@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Burning-town roar with the new Kamehameha release (2026-10-30)
+
+- The cosmic montage's town fires play the roar row (the release arc alone:
+  one voice, no buzz, no music duck) instead of `AUDIO_SFX_BEAM`, which is
+  now the Genesis-style Kamehameha laser. `orbit_bind_roar` keeps the
+  retail beam roar on define-0 builds.
+- Fix the roar's schedule. It read the divider's quotient (`$4214`), so it
+  re-sent the cue on every frame of the first 96 after each hit (380 sends
+  in one montage), restarting it each time. Its first send also tied the
+  Fortress break's priority at the hit and replaced it. The roar now starts
+  24 frames after the hit and repeats every 64 frames (about its length),
+  using a mask instead of the hardware divider.
+- Validation: the orbit `montage` test passes in default and define-0
+  builds (0 lagged frames). A port trace shows, per town, laser at -12,
+  break at the hit, roar at +24 and +88; DSP voice 7 plays the arc at full
+  envelope while the music voices keep their volume.
+
 ## Combat and cinematic follow-up fixes (2026-10-30)
 
 - Popoi now shows a big open-mouth surprised expression during the lift and

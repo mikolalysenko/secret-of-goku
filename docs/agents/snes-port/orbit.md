@@ -745,10 +745,18 @@ both maps (`$5000`, `$3800`) during the vblanks before the hit, 8 blocks at
 a time, and the hit switches BG1SC/BG2SC to it. The red tint (+5 red over
 86-109 and 131-154, +2 from 156, the browser's formula) is a generated
 colour set per town, sent at the game's own palette transfer through core's
-`modules_cgram_upload` (`orbit_cgram_upload`). The Fortress break and laser
-cues are joined by a sustained burning roar every 96 frames from the hit
-through the end of the town shot, so the houses do not fall silent while
-their fires remain visible.
+`modules_cgram_upload` (`orbit_cgram_upload`). The laser and Fortress
+break cues are followed by a burning roar, so the houses do not fall silent
+while their fires remain visible: 24 frames after the hit (once the break's
+thump has ended; at the hit the roar would tie its priority and replace it),
+then every 64 frames, about the roar's length. A town shot lasts 110-140
+frames past its hit, so the roars run back to back into the cut.
+`orbit_bind_roar` (`bind.asm`, assembled after the audio module) picks the
+cue: on custom-sample cartridges `AUDIO_SFX_BEAM` is the Kamehameha laser,
+so it queues the roar row (`!AUDIO_NATIVE_ROAR`, the release arc alone on
+one voice, no buzz and no music duck); the define-0 build keeps the retail
+beam roar. A command trace of the `montage` test shows, per town, the laser
+at hit - 12, the break at the hit, and the roar at +24 and +88.
 
 The laser is BG3: one solid tile in the laser's purple shown inside window
 1, `[a - 9, b + 9]` per line, and its core lit by colour math (+ (6, 25, 4)

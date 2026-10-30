@@ -55,7 +55,8 @@ now points at the arc alone. That gives a one-voice roar at full gain
 (the existing `$7D` comparison in `beds.s`), with no buzz and no duck, for
 scenes that want the old burning-roar role without a laser. Modules send
 `02 !AUDIO_NATIVE_ROAR 0F 88` through `core_sound_queue`
-(`audio/ids.asm`). The 65816 code and the define-0 rollback ROM are
+(`audio/ids.asm`); the cosmic montage's burning towns do
+(`orbit_bind_roar`, orbit.md). The 65816 code and the define-0 rollback ROM are
 byte-identical to before.
 
 **Loudness.** `power-preview.mjs`, compact bank, field-song echo, cue

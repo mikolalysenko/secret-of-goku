@@ -57,6 +57,20 @@ else
 	RTS
 endif
 
+; The montage's burning roar (montage.asm mt_sounds). JSL, M16/X16, any DB.
+; On custom-sample cartridges BEAM is the Kamehameha laser, so the fires
+; play the roar row: its arc alone on one voice, no buzz, no music duck.
+orbit_bind_roar:
+if !AUDIO_CUSTOM_SAMPLES
+	LDA.w #!AUDIO_NATIVE_ROAR<<8|$0002
+	LDX.w #$880F
+	JSL core_sound_queue
+else
+	LDA.w #!AUDIO_SFX_BEAM
+	JSL audio_sfx
+endif
+	RTL
+
 ; mana-mod.js flightTransition {kind: 'landing'} (returnToFortress): the
 ; world module's landing pose, which plays while the deck fades in. Its
 ; transition word stands in for an API (orbit.md, Requests).
