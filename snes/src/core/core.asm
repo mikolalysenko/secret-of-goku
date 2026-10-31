@@ -92,6 +92,7 @@
 !core_oam_front_n     = !RAM_CORE_EXT+$054 ; word: staged front sprites (field)
 !core_oam_world_hw    = !CORE_SAFE+$012 ; word: byte offset end of module sprites drawn in world mode
 !core_oam_field_hw    = !CORE_SAFE+$014 ; word: byte offset end of module sprites drawn in the field
+!core_oam_upload_hw   = !CORE_SAFE+$09E ; word: low-table bytes on screen in the last field OAM upload
 !core_tmp0            = !RAM_CORE_EXT+$05A ; word: internal scratch
 !core_tmp1            = !RAM_CORE_EXT+$05C ; word: internal scratch
 !core_tmp2            = !RAM_CORE_EXT+$05E ; word: internal scratch

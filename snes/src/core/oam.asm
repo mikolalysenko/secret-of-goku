@@ -831,6 +831,10 @@ endmacro
 
 ; C0:C11E, M8/X16, DB=0, D=0. Keep the native DMA and CPU return state.
 ; OAMADD must be set after DMA: the transfer advances the PPU address.
+; Only the used low table goes up, plus every high-table byte. The native
+; cleanup hides entries from this frame's end through the previous upload's
+; end, so the larger of those two ranges covers every changed entry. A native
+; full clear forces the next upload to cover the whole low table.
 core_oam_upload:
 	LDX.w #0
 	STX.w $2102
@@ -839,10 +843,35 @@ core_oam_upload:
 	LDX.w #$0400
 	STX.w $4370
 	STZ.w $4374
-	LDX.w #$0220
+	REP #$20
+	LDA.l !core_oam_field_hw
+	CMP.l !core_oam_upload_hw
+	BCS +
+	LDA.l !core_oam_upload_hw
++	CMP.w #$0200
+	BCC +
+	LDA.w #$0200
++	CMP.w #$0004                 ; a zero DMA length means 64 KiB
+	BCS +
+	LDA.w #$0004
++	TAX
+	SEP #$20
 	STX.w $4375
 	LDA.b #$80
 	STA.w $420B
+	; The high table starts at OAM word $100, not after the shortened low DMA.
+	LDX.w #$0100
+	STX.w $2102
+	LDX.w #$0A00
+	STX.w $4372
+	LDX.w #$0020
+	STX.w $4375
+	LDA.b #$80
+	STA.w $420B
+	REP #$20
+	LDA.l !core_oam_field_hw
+	STA.l !core_oam_upload_hw
+	SEP #$20
 	LDA.l !core_oam_first
 	BEQ .done                  ; native setup already disabled rotation
 	PHP
@@ -868,6 +897,8 @@ core_oam_native_clear:
 	LDA.b #0
 	STA.l !core_oam_first
 	REP #$30
+	LDA.w #$0200
+	STA.l !core_oam_upload_hw
 	LDX.w #0
 	JML $80E35A
 endif

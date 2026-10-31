@@ -349,6 +349,14 @@ if not(defined("CORE_NATIVE_TILES_SLOW"))
 %hijack($C1C599, core_native_tiles, 5, core)
 endif
 
+; Object-name VRAM bytes (C2:0E83-0E8F): preserve every byte write and the
+; continuation's CPU state, but do not pay the three-instruction loop per byte.
+%orig4($C20E83, $76B700A0)
+%orig4($C20E87, $0021808F)
+%orig3($C20E8B, $4DC0C8)
+%orig2($C20E8E, $F5D0)
+%hijack($C20E83, core_native_obj_names, 13, core)
+
 %orig4($C12710, $30C2080B)
 %orig1($C12714, $8A)
 %patch($C12710, 5, core)

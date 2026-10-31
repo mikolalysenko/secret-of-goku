@@ -1308,6 +1308,20 @@ core_native_tiles_retail:
 	PLB
 	JML $81C59E
 
+; C2:0E83's 77 object-name bytes, M8/X8. Each write remains a separate CPU
+; store to WMDATA, so the routine has exactly the retail VRAM side effects and
+; is safe wherever the original ran (including forced blank and HDMA users).
+; Unrolling removes only the branch/counter overhead; it stays interruptible.
+core_native_obj_names:
+	LDY.b #$00
+	for byte = 0..77
+		LDA [$76],Y
+		STA.l $002180
+		INY
+	endfor
+	CPY.b #$4D                       ; the original failed branch's flags
+	JML $C20E90
+
 if not(defined("CORE_NATIVE_GRAPHICS_MVN"))
 ; Fixed, disjoint ROM -> WRAM copies. Descending offsets let the 1600-byte
 ; death sheet share the tail of the 2048-byte weapon copy. Each pair costs
