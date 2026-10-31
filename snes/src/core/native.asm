@@ -66,6 +66,30 @@ core_native_status_empty:
 	LDA.w #15
 	JML $C05AAC
 
+; C8:E301 with no current status, previous status or pending bits: the full
+; helper only clears $98/$A6, stores ~$E1AA in $A4 and returns A = 0 with
+; M8/N0/Z1/C1. Keep those scratch and flag results (including the retail
+; CMP's carry), without its repeated masks and branches. Any nonzero input
+; redoes the replaced STZ and rejoins at E305, whose LDA $9A restores A/NZ.
+core_native_status_idle:
+	REP #$20
+	LDA.w $E190,X
+	ORA.w $E1EE,X
+	ORA $9A
+	BNE .native
+	STZ $98
+	STZ $A6
+	LDA.w $E1AA,X
+	EOR.w #$FFFF
+	STA $A4
+	SEC
+	LDA.w #$0000
+	SEP #$20
+	RTL
+.native
+	STZ $98
+	JML $C8E305
+
 ; C1:E05A: the actor palette's fixed fifteen-word copy. X/Y are restored
 ; immediately afterwards, so offset operands replace their increments.
 ; Retain the original loop for narrow indexes, unusual counters or index

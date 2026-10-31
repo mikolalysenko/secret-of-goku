@@ -1926,6 +1926,10 @@ second direction multiply and coordinate write per placement. The full FX
 suite passes; Mech Rider's CPU misses fall from 3/240 to 2/240, with its
 vblank overruns unchanged.
 
+The native status-idle helper costs 119 → 60 cycles with its final carry and
+scratch state preserved; nonzero inputs retain the retail path. Full-party
+fatal-Beast lag stays 97.
+
 The companion AI setup takes a direct no-target path when party status and
 controller masks prove no target. It costs 657 → 151 cycles per deferred job,
 with registers, flags, script state and live RAM preserved in assembled
@@ -1935,8 +1939,8 @@ full-party actor workload is still open.
 New controller-driven native boss cases run Hydra and Mech Rider with punches,
 ki, a full charge and Focus. Every gameplay case now asserts active Primm and
 Popoi, and their quick starts recruit them. Full-party normal combat remains
-zero-drop. Current full-party open misses are Mech Rider 29/240 plus 17 vblank
-overruns, Hydra 5/240 and Frieza orbit 2/660. Thanatos walking and fighting are
+zero-drop. Current full-party open misses are Mech Rider 28/240 plus 18 vblank
+overruns, Hydra 3/240 and Frieza orbit 2/660. Thanatos walking and fighting are
 zero-drop after the real arrival-song upload finishes during setup. The
 original `$3B` cold-import loader stall is kept out of that measurement window
 rather than assigned to combat. A direct Frieza path removes much of the module

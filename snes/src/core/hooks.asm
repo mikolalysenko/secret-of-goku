@@ -312,6 +312,11 @@ if not(defined("CORE_NATIVE_STATUS_EMPTY_SLOW"))
 %hijack($C05AA7, core_native_status_empty, 5, core)
 endif
 
+if not(defined("CORE_NATIVE_STATUS_IDLE_SLOW"))
+%orig4($C8E301, $986420C2)
+%hijack($C8E301, core_native_status_idle, 4, core)
+endif
+
 ; Native message graphics: copy the same WRAM bytes with interruptible MVN.
 if not(defined("CORE_NATIVE_TEXT_SLOW"))
 %orig4($C00754, $8DA165AD)
