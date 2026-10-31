@@ -2927,6 +2927,10 @@ story_test_sweep:
 	RTS
 endif
 
+if not(defined("CORE_NATIVE_TEXT_SLOW"))
+incsrc "native-text.asm"
+endif
+
 story_code_end:
 assert story_code_end <= !CODE_STORY+$7C00, "story code bank overflow"
 pullpc

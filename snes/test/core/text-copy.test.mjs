@@ -107,6 +107,20 @@ test('window pattern painting preserves both glyph planes and fallback inputs',t
   assert(after<before*.7,`paint cycles ${before} -> ${after}`);
   t.diagnostic(`native two-half pattern paint: ${before} -> ${after} CPU cycles`);
 });
+test('native pattern-paint batches preserve every word and the outer-loop CPU state',t=>{
+  for(const entry of [0x151A,0x1521]){
+    const batch=input=>compare({entry,stop:0x1538,src:0,...input});
+    for(const pattern of [0,1,17,255])for(const glyphPattern of [0,19,255])
+      for(const style of [0,0x80,0x300,0x7F80])batch({pattern,glyphPattern,style});
+    for(let p=0x20;p<256;p++)if((p&0x30)===0x20)
+      for(const dp of [0,0x1234,0x8000])batch({p,dp});
+    batch({db:0x7F});
+    for(const style of [0x7F81,0x8000,0xFFF0])batch({style});
+    const [before,after]=batch({pattern:17,glyphPattern:19,style:0x300});
+    assert(after<before*.8,`batch cycles ${before} -> ${after}`);
+    t.diagnostic(`native 14-call pattern batch $${entry.toString(16)}: ${before} -> ${after} CPU cycles`);
+  }
+});
 test('window buffer clear preserves bytes outside the buffer and all CPU state',t=>{
   const clear=input=>compare({entry:0x107B,stop:0x1084,...input});
   for(let p=0x20;p<256;p++)if((p&0x30)===0x20)
