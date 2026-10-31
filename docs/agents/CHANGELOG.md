@@ -24,6 +24,11 @@ stay traceable even when they are committed together.
   Both assembled differential entries retain every output word and the retail
   outer-loop CPU state. Each batch falls from about 15,153 to 6,210 cycles;
   Thanatos fighting drops from 8/1440 missed updates to zero.
+- Include the companions' reunion in the good full-party ending's expected cue
+  order, but not the bad route. Hydra's preset also allows the companions to
+  follow Goku into the chamber. Full-party Hydra combat is down to 2/240
+  misses; fatal-Beast is 96 frames, and Mech Rider has 21 misses and 41 vblank
+  overruns with the real full-party fixture.
 - Fix the Fly ring icon's palette on ordinary maps: follow Goku's tracked
   palette slot instead of forcing palette 5. New Potos coverage verifies the
   icon and its colors stay stable; waterfall keeps the correct palette 5.
@@ -40,8 +45,8 @@ stay traceable even when they are committed together.
 - Require active Primm and Popoi in every gameplay benchmark. Recruit them in
   the Hydra, Mech Rider and Mana Beast quick starts and correct the private
   waterfall/boss imports. Normal full-party combat remains zero-drop. Current
-  open full-party timing: Mech Rider 28/240 misses and 18 vblank overruns,
-  Hydra 3/240, Frieza orbit 2/660; Thanatos fighting remains zero-drop.
+  open full-party timing: Mech Rider 21/240 misses and 41 vblank overruns,
+  Hydra 2/240, Frieza orbit 2/660; Thanatos fighting remains zero-drop.
 - Keep the Analyzer lifetime fixture's target alive after its real cast and
   picture capture. Party attacks previously killed it after 87 field frames,
   hiding the reading before the 240-frame expiry check could run.

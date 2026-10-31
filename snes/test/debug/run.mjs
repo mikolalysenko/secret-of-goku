@@ -50,6 +50,7 @@ const GAPS=[
   // frame (Goku still at the altar), and waiting for the load ends ~1,400
   // frames later, after that event (other story flags).
   {preset:'hexas',key:/^party0\.pos$/,owner:'debug (capture timing)',why:'capture lands on the door frame, before the load moves Goku to 248,442'},
+  {preset:'hexas',key:/^party[12]\.pos$/,owner:'debug (capture timing)',why:'the full-party companions follow Goku into Hexas\'s chamber'},
 ];
 const gapOf=(kind,d)=>GAPS.find(g=>(g.preset==='*'||g.preset===kind)&&g.key.test(d.k));
 

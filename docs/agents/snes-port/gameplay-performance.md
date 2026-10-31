@@ -1933,14 +1933,14 @@ fatal-Beast lag stays 97.
 The companion AI setup takes a direct no-target path when party status and
 controller masks prove no target. It costs 657 → 151 cycles per deferred job,
 with registers, flags, script state and live RAM preserved in assembled
-differentials. Full-party fatal-Beast lag falls from 99 to 97; the remaining
+differentials. Full-party fatal-Beast lag falls from 99 to 96; the remaining
 full-party actor workload is still open.
 
 New controller-driven native boss cases run Hydra and Mech Rider with punches,
 ki, a full charge and Focus. Every gameplay case now asserts active Primm and
 Popoi, and their quick starts recruit them. Full-party normal combat remains
-zero-drop. Current full-party open misses are Mech Rider 28/240 plus 18 vblank
-overruns, Hydra 3/240 and Frieza orbit 2/660. Thanatos walking and fighting are
+zero-drop. Current full-party open misses are Mech Rider 21/240 plus 41 vblank
+overruns, Hydra 2/240 and Frieza orbit 2/660. Thanatos walking and fighting are
 zero-drop after the real arrival-song upload finishes during setup. The
 original `$3B` cold-import loader stall is kept out of that measurement window
 rather than assigned to combat. A direct Frieza path removes much of the module

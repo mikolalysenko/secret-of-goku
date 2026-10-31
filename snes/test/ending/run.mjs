@@ -369,6 +369,8 @@ function endingPlan(script,outcome){
     if(op>=0x20&&op<=0x27&&id in CUE_OF)cues.push(id);
   }
   const names=[outcome==='good'?'transition':'doomed',...cues.map(id=>outcome==='bad'?BAD_CUE[CUE_OF[id]]??CUE_OF[id]:CUE_OF[id])];
+  // The good full-party route includes the companions' reunion; the bad route does not.
+  if(outcome==='good')names.splice(names.indexOf('scatter')+1,0,'reunion');
   return{cues:cues.map(id=>id.toString(16).toUpperCase().padStart(3,'0')),phases:names.map(n=>PHASE[n]),names};
 }
 const hex3=n=>n.toString(16).toUpperCase().padStart(3,'0');
