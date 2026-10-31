@@ -4,15 +4,15 @@
 ; column 38, or 34 in Super Saiyan form, row 0, every second pixel) in his
 ; own colours. The goku module already stores that downscale for every cell
 ; (goku_cell_mini, tiles in Goku's palette), so the cartridge copies those
-; four tiles in place of the drum and points the icon's OBJ at palette 5,
-; which holds Goku's colours in the field.
+; four tiles in place of the drum and points the icon's OBJ at Goku's tracked
+; palette slot (1 on ordinary maps, 5 on water maps).
 
 !WORLD_FLY_ICON = $A4      ; the Drum's ring icon (D2:8400 + $A4 * 96)
 !WORLD_FLY_COL_BASE = 38
 !WORLD_FLY_COL_SSJ = 34
 
 ; Carry set when the Fly icon is Goku's: Goku active and the first player's
-; ring ($1802 bit 0 clear: palettes 0-3, so palette 5 is still Goku's).
+; ring ($1802 bit 0 clear: the tracked slot remains Goku's).
 ; M16 X16, DB = 0. Preserves X/Y.
 world_fly_icon_ok:
 	LDA.l !persist_goku_active
@@ -120,7 +120,7 @@ world_ring_icon_hook:
 ; C0:7063 (JSL, 8 bytes, replaced CPY #$0009 / JSR $709C / STA $06,X): the
 ; ring's icon sprite (X = sprite object) gets tile and attributes for slot Y:
 ; tile $E0 + 2 * slot, priority 3, palette slot / 3 (C0:709C adds $0200 per
-; group of three). The Fly icon with Goku uses palette 5 (Goku's colours).
+; group of three). The Fly icon with Goku uses his tracked palette slot.
 ; Entry: M16 X16, DB = 0, D = 0, A = tile/attr so far.
 world_ring_attr_hook:
 	CPY.w #$0009
@@ -141,7 +141,12 @@ world_ring_attr_hook:
 	BNE .keep
 	PLA
 	AND.w #$F1FF
-	ORA.w #$0A00                     ; palette 5
+	STA $06,X
+	LDA.l !pal_slot
+	AND.w #$0007
+	XBA
+	ASL
+	ORA $06,X
 	STA $06,X
 	RTL
 .keep

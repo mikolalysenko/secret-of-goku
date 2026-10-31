@@ -268,9 +268,10 @@ The browser draws Goku's upright hover pose at half size (column 38, or 34
 in Super Saiyan form, every second pixel) wherever the Drum's 16×16 icon
 appears. The ring's icon builder (`D0:CA6E`, icon `$A4`) gets the goku
 module's 16×16 miniature of that cell instead of the drum art, and the icon
-sprite (`C0:7063`) uses palette 5, which holds Goku's own colours in the
-field, so the icon is exact. Only player 1's ring (`$1802` bit 0 clear):
-player 2's ring loads its item colours into palettes 4-7.
+sprite (`C0:7063`) follows Goku's tracked palette slot: palette 1 on ordinary
+maps, palette 5 on water maps. The icon and its colors remain stable while the
+ring is open. Only player 1's ring (`$1802` bit 0 clear): player 2's ring loads
+its item colours into palettes 4-7.
 
 ## Mode 7 constraints and how they are met
 
@@ -330,7 +331,7 @@ player 2's ring loads its item colours into palettes 4-7.
 | `C0:98FD` | `JSR $99F3 / REP #$20` | world row decompressed: draw craters into the 7F ring |
 | `C0:8190` | `LDA $7F0000,X / AND #$00FF` | landing tile under a crater = original terrain |
 | `D0:CA6E` | `REP #$30 / AND #$00FF` | ring icon builder: the Fly icon |
-| `C0:7063` | `CPY #$0009 / JSR $709C / STA $06,X` | ring icon sprite: palette 5 for the Fly icon |
+| `C0:7063` | `CPY #$0009 / JSR $709C / STA $06,X` | ring icon sprite: Goku's tracked palette slot for the Fly icon |
 
 ## API for other modules
 
@@ -414,6 +415,7 @@ states (`preset__flight`).
 | `barrier` | full wave on the cloud barrier: no crater, break request, tree-blast message; no target once `$E3` bit 6 is set |
 | `dock` | approach counter starts the timer, ki boost, curve with the full cell then the miniature, no native dragon, deck landing |
 | `item` | Fly from the item ring: Goku's icon tiles and palette 5, no drum animation, `$0C80` request, 104 frames to world flight |
+| `item-potos` | Ordinary-map Fly icon: palette 1 and all 15 colours stay stable across ring frames; waterfall retains palette 5 |
 | `radar` | 15 real-save quest states against the browser's target, count and text; live Fortress-to-Beast label update |
 | `map` | globe and flat-map navigation; both forms' palettes from the first visible return frame, sprite tiles, effect colours, radar and ki afterward |
 | `timing` | real NMI frame counts, complete-NMI duration, palette and sprite checks; `--repeat=5` measures 5,770 frames, `--scene=` selects another world fixture |
@@ -432,8 +434,8 @@ module integration results are recorded in the changelog.
 - The explosion draws a third of its 20 sparks per frame (each spark every
   third frame); the charge sparks' target updates every four frames.
 - Optional effect sprites are dropped in a frame that runs past line 208.
-- The Fly icon follows the palette 5 tint (status colours) and is not used
-  for player 2's ring.
+- The Fly icon follows Goku's tracked palette slot (status colours), not a
+  hard-coded palette 5 on every map, and is not used for player 2's ring.
 - Everything was verified in Mesen2 only, not on real hardware.
 
 ## Core requests

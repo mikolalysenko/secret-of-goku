@@ -24,6 +24,9 @@ stay traceable even when they are committed together.
   Both assembled differential entries retain every output word and the retail
   outer-loop CPU state. Each batch falls from about 15,153 to 6,210 cycles;
   Thanatos fighting drops from 8/1440 missed updates to zero.
+- Fix the Fly ring icon's palette on ordinary maps: follow Goku's tracked
+  palette slot instead of forcing palette 5. New Potos coverage verifies the
+  icon and its colors stay stable; waterfall keeps the correct palette 5.
 - Skip the native status-idle helper's redundant work, including the original
   final carry. Idle cost falls from 119 to 60 cycles with live state preserved;
   nonzero inputs retain the retail path. Full-party fatal-Beast lag stays 97.
