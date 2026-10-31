@@ -15,10 +15,11 @@ stay traceable even when they are committed together.
   back placement and capacity limits retain the generic renderer.
 - Skip bank dispatch for idle NMI modules.
 - Add real-input Hydra and Mech Rider combat cases. Current open timing:
-  Mech Rider one CPU miss, Hydra four, Frieza orbit two and Thanatos fighting
-  seven; walking is zero-drop once the real arrival-song upload finishes during
-  setup. These are not zero-drop claims. Full Frieza and Vegeta suites, normal
-  combat, Mana Beast/finale and core rendering checks pass.
+  Mech Rider three CPU misses and 45 vblank overruns, Hydra four, Frieza
+  orbit two and Thanatos fighting eight; walking is zero-drop once the real
+  arrival-song upload finishes during setup. These are not zero-drop claims.
+  Full Frieza and Vegeta suites, normal combat, Mana Beast/finale and core
+  rendering checks pass.
 
 ## Popoi's shocked face in the Frieza showdown (2026-10-30)
 

@@ -1911,12 +1911,13 @@ placement and capacity limits. The complete Frieza suite passes. Idle NMI
 callbacks are filtered before their bank calls.
 
 New controller-driven native boss cases run Hydra and Mech Rider with punches,
-ki, a full charge and Focus. Current open misses are Mech Rider 1/240, Hydra
-4/240 and Frieza orbit 2/660. Thanatos walking is zero-drop after the real
-arrival-song upload finishes during setup; fighting still has 7/1440 misses
-from native event/actor peaks. The original `$3B` cold-import loader stall is
-kept out of that measurement window rather than assigned to combat. A direct
-Frieza path removes much of the module cost, but native phase scheduling still
-changes the exact miss set. These measurements are open work, not a zero-drop
-claim. Normal combat, all Frieza stages, the full Vegeta battle, Mana Beast and
-the ending pass their behavioral and rendering checks.
+ki, a full charge and Focus. Current open misses are Mech Rider 3/240 plus 45
+vblank overruns, Hydra 4/240 and Frieza orbit 2/660. Thanatos walking is
+zero-drop after the real arrival-song upload finishes during setup; fighting
+still has 8/1440 misses from native event/actor peaks. The original `$3B`
+cold-import loader stall is kept out of that measurement window rather than
+assigned to combat. A direct Frieza path removes much of the module cost, but
+native phase scheduling still changes the exact miss set. These measurements
+are open work, not a zero-drop claim. Normal combat, all Frieza stages, the
+full Vegeta battle, Mana Beast and the ending pass their behavioral and
+rendering checks.
