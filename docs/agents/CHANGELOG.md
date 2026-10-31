@@ -24,11 +24,14 @@ stay traceable even when they are committed together.
   Both assembled differential entries retain every output word and the retail
   outer-loop CPU state. Each batch falls from about 15,153 to 6,210 cycles;
   Thanatos fighting drops from 8/1440 missed updates to zero.
+- Skip fully offscreen one-part FX run placements without invoking the generic
+  clipper. Multi-part and partially visible runs are unchanged. Full-party
+  Hydra misses fall from 5/240 to 2/240; the complete FX suite passes.
 - Require active Primm and Popoi in every gameplay benchmark. Recruit them in
   the Hydra, Mech Rider and Mana Beast quick starts and correct the private
   waterfall/boss imports. Normal full-party combat remains zero-drop. Current
   open full-party timing: Mech Rider 29/240 misses and 17 vblank overruns,
-  Hydra 5/240, Frieza orbit 2/660; Thanatos fighting remains zero-drop.
+  Hydra 2/240, Frieza orbit 2/660; Thanatos fighting remains zero-drop.
 - Keep the Analyzer lifetime fixture's target alive after its real cast and
   picture capture. Party attacks previously killed it after 87 field frames,
   hiding the reading before the 240-frame expiry check could run.
