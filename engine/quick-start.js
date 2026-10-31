@@ -151,6 +151,7 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
   // Frieza has already taken the Balls at the altar and is watching the
   // generals; the Death Ball waits for the Fortress deck after Rider III.
   if(kind==='hexas'||kind==='rider'){
+    await fullParty({mod,pump});
     // Play the real altar scene: it leaves the native interpreter state the
     // later palace events expect, which a restored stage alone does not.
     progress('Frieza takes the Dragon Balls…');
@@ -215,6 +216,7 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
     mod.frieza.restore({stage:'defeated',stolen:false,stolenMask:127,eighth:true,permanent:true,fallen:true,trialWon:true});
     mod.write8(0xcf4e,8);
     if(kind==='beast'){
+      await fullParty({mod,pump});
       if(!mod.story.request(0x429))throw Error('The Mana Beast entrance was not ready.');
       for(let i=0;i<300&&!(mod.status.map===253&&mod.canAttack&&mod.challenge.status.started);i++)await pump(16,[11]);
       if(mod.status.map!==253||!mod.canAttack||!mod.challenge.status.started)throw Error('The Mana Beast did not start.');

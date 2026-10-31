@@ -18,23 +18,25 @@ stay traceable even when they are committed together.
   cached copy preserves every output byte, decoder scratch word, pointer,
   register and flag in a retail-CPU differential test; other streams retain
   the original decoder. Decode cost falls from 110,246 to 12,431 CPU cycles
-  and the real-input fight's missed updates from 4/240 to 2/240.
+  and the real-input fight's missed updates from 4/240 to 2/240 against its
+  old solo fixture.
 - Batch the two native 14-call pattern-paint loops with fixed page offsets.
   Both assembled differential entries retain every output word and the retail
   outer-loop CPU state. Each batch falls from about 15,153 to 6,210 cycles;
   Thanatos fighting drops from 8/1440 missed updates to zero.
+- Require active Primm and Popoi in every gameplay benchmark. Recruit them in
+  the Hydra, Mech Rider and Mana Beast quick starts and correct the private
+  waterfall/boss imports. Normal full-party combat remains zero-drop. Current
+  open full-party timing: Mech Rider 29/240 misses and 17 vblank overruns,
+  Hydra 5/240, Frieza orbit 2/660; Thanatos fighting remains zero-drop.
 - Keep the Analyzer lifetime fixture's target alive after its real cast and
   picture capture. Party attacks previously killed it after 87 field frames,
   hiding the reading before the 240-frame expiry check could run.
 - Update only the moving axis between repeated FX assembly placements. The
-  full FX suite passes and Mech Rider's CPU misses fall from three to two;
-  its vblank overruns are unchanged.
-- Add real-input Hydra and Mech Rider combat cases. Current open timing:
-  Mech Rider two CPU misses and 45 vblank overruns, Hydra two, Frieza
-  orbit two. Thanatos walking and fighting are zero-drop after the real
-  arrival-song upload finishes during setup.
-  Full Frieza and Vegeta suites, normal combat, Mana Beast/finale and core
-  rendering checks pass.
+  full FX suite passes and Mech Rider's CPU misses fall from three to two
+  against its old solo fixture; its vblank overruns are unchanged.
+- Add real-input Hydra and Mech Rider combat cases. Full Frieza and Vegeta
+  suites, normal combat, Mana Beast/finale and core rendering checks pass.
 
 ## Popoi's shocked face in the Frieza showdown (2026-10-30)
 

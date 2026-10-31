@@ -227,6 +227,7 @@ function test()
     if visible then visibleFrames=visibleFrames+1 end
     if bad then paletteErrors=paletteErrors+1 end
   end, emu.callbackType.exec, 0x00B07D, 0x00B07D)
+  local partyFull=(H.r8(0x7EE200)&1~=0 and H.r8(0x7EE400)&1~=0) and 1 or 0
   measuring=true
   for buttons,n in SCRIPT:gmatch('([^,:]+):(%d+)') do
     H.input={}; for b in buttons:gmatch('[^+]+') do if b~='none' then H.input[b]=true end end
@@ -275,7 +276,7 @@ function test()
   H.result('lateNmis',lateNmis)
   H.result('nmiFrames',nmiFrames); H.result('visibleFrames',visibleFrames)
   H.result('flightFrames',flightFrames); H.result('actions',actions)
-  H.result('maps',maps); H.result('maxTravel',maxTravel)
+  H.result('maps',maps); H.result('maxTravel',maxTravel); H.result('partyFull',partyFull)
   H.result('flightCorridorTurns',flightCorridorTurns)
   H.result('forms',forms);H.result('sounds',sounds);H.result('maxPower',maxPower)
   H.result('grassCuts',grassCuts);H.result('auraFrames',auraFrames);H.result('maxAuraSprites',maxAuraSprites)

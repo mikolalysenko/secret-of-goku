@@ -119,7 +119,7 @@ function report({name,tag,offset,corridor,r}){
   const powerPass=!name.endsWith('-grass')||(v.grassCuts>0&&v.maxPower>=96&&v.auraFrames>5&&v.maxAuraSprites>=6&&v.auraBgWrites===0&&(args.includes('--pcm')||(v.chargeTailVoices===0&&v.sounds?.[isResident7(romBytes)?0xED:NATIVE_BEDS.charge]>0)));
   const transformPass=name!=='transform-grass'||(v.forms?.['1']>0&&(args.includes('--pcm')||v.sounds?.['224']>0));
   const corridorPass=!corridor||(v.flightCorridorTurns>=2&&v.maxTravel<128);
-  const gameplayPass=running&&powerPass&&transformPass&&corridorPass&&v.destroyRepeatFrames===0&&(!action||v.actions?.[action]>0)&&(!name.includes('fly')&&!name.includes('flight')||v.flightFrames>0)&&(!['walk','fly','water-flight'].includes(name)||v.maxTravel>2);
+  const gameplayPass=running&&v.partyFull===1&&powerPass&&transformPass&&corridorPass&&v.destroyRepeatFrames===0&&(!action||v.actions?.[action]>0)&&(!name.includes('fly')&&!name.includes('flight')||v.flightFrames>0)&&(!['walk','fly','water-flight'].includes(name)||v.maxTravel>2);
   const hardwarePass=r.code===0&&!v.error&&v.paletteErrors===0&&v.staminaFrames===0&&v.spriteOverflowFrames===0&&v.nmiOverruns===0&&v.gfxDmaOverruns===0;
   const timingPass=v.lag===0&&v.missedVblanks===0;
   const requireTiming=offset===0&&(zeroFrameCases.has(name)||args.includes('--strict-timing'));
@@ -127,7 +127,7 @@ function report({name,tag,offset,corridor,r}){
   console.log(`${tag}: ${pass?'pass':'FAIL'}; CPU misses ${v.missedVblanks}/${v.videoFrames}${timingPass?'':requireTiming?' (timing FAIL)':' (open timing issue)'}; palette ${v.paletteErrors}, stamina ${v.staminaFrames}, sprite overflow ${v.spriteOverflowFrames}, vblank overrun ${v.nmiOverruns}`);
   if(v.destroyRepeatFrames)console.log(`  scenery/barrier work repeated in ${v.destroyRepeatFrames} field updates`);
   if(args.includes('--profile'))console.log(v.profile);
-  if(!gameplayPass)console.log('  gameplay did not exercise the expected state:',{completed:v.completed,nmi:v.nmiFrames,visible:v.visibleFrames,flight:v.flightFrames,actions:v.actions,travel:v.maxTravel});
+  if(!gameplayPass)console.log('  gameplay did not exercise the expected state:',{completed:v.completed,nmi:v.nmiFrames,visible:v.visibleFrames,flight:v.flightFrames,actions:v.actions,travel:v.maxTravel,partyFull:v.partyFull});
   if(v.error)console.log(v.error);
   return {name,offset,pass,gameplayPass,hardwarePass,timingPass,requireTiming,...v};
 }

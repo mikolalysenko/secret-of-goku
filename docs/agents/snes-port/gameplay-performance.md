@@ -1912,8 +1912,8 @@ callbacks are filtered before their bank calls.
 
 Hydra's fixed 2,048-byte graphics decode is preexpanded in ROM. Its cached
 copy preserves all output and decoder state (110,246 → 12,431 CPU cycles in
-the assembled retail differential), reducing the fight's misses from 4/240
-to 2/240; the three-video-frame decompression stall is gone. Other streams
+the assembled retail differential), reducing the old solo fight's misses from
+4/240 to 2/240; the three-video-frame decompression stall is gone. Other streams
 keep the original decoder.
 
 The two native 14-call pattern-paint loops now run as fixed-page batches.
@@ -1927,12 +1927,13 @@ suite passes; Mech Rider's CPU misses fall from 3/240 to 2/240, with its
 vblank overruns unchanged.
 
 New controller-driven native boss cases run Hydra and Mech Rider with punches,
-ki, a full charge and Focus. Current open misses are Mech Rider 2/240 plus 45
-vblank overruns, Hydra 2/240 and Frieza orbit 2/660. Thanatos walking and
-fighting are zero-drop after the real arrival-song upload finishes during
-setup. The original `$3B` cold-import loader stall is kept out of that
-measurement window rather than assigned to combat. A direct Frieza path
-removes much of the module cost. The remaining boss measurements above are
-open work, not a zero-drop claim. Normal combat, all Frieza stages, the
-full Vegeta battle, Mana Beast and the ending pass their behavioral and
-rendering checks.
+ki, a full charge and Focus. Every gameplay case now asserts active Primm and
+Popoi, and their quick starts recruit them. Full-party normal combat remains
+zero-drop. Current full-party open misses are Mech Rider 29/240 plus 17 vblank
+overruns, Hydra 5/240 and Frieza orbit 2/660. Thanatos walking and fighting are
+zero-drop after the real arrival-song upload finishes during setup. The
+original `$3B` cold-import loader stall is kept out of that measurement window
+rather than assigned to combat. A direct Frieza path removes much of the module
+cost. The remaining boss measurements above are open work, not a zero-drop
+claim. Normal combat, all Frieza stages, the full Vegeta battle, Mana Beast and
+the ending pass their behavioral and rendering checks.
