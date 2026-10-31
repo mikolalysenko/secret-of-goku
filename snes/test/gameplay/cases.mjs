@@ -16,8 +16,8 @@ export const GAMEPLAY_CASES=[
   ['charge','animation-audit__native__rabite-field-a','right:4,l+y:100,none:136'],
   ['focus-grass','animation-audit__native__rabite-field-b','l:120,none:120','down:2,b:60,none:15,down:24,none:15'],
   ['transform-grass','animation-audit__native__rabite-field-b','l:100,l+a:4,none:136','down:2,b:60,none:15,down:24,none:15'],
-  ['thanatos-fight','preset__thanatos',Array(6).fill('b:30,y:20,l+y:90,none:20,l:60,none:20').join(',')],
-  ['thanatos-walk','preset__thanatos',Array(8).fill('right:30,left:30,up:20,down:20').join(',')],
+  ['thanatos-fight','preset__thanatos',Array(6).fill('b:30,y:20,l+y:90,none:20,l:60,none:20').join(','),'none:60'],
+  ['thanatos-walk','preset__thanatos',Array(8).fill('right:30,left:30,up:20,down:20').join(','),'none:60'],
   // Native multi-part and mounted bosses: exercise real melee, ki, a full
   // charge and Focus without replacing their actors with virtual targets.
   ['hexas-punch','hexas-fight','b:30,y:20,l+y:90,none:20,l:60,none:20'],
