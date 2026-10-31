@@ -6,17 +6,14 @@ stay traceable even when they are committed together.
 
 ## SNES native rendering and combat performance checkpoint (2026-10-30)
 
-- Bound field OAM uploads to the used low table plus the full high table,
-  preserving native cleanup and forcing a full refresh after native clears and
-  for ring/menu OAM, which has no field high-water mark. Unroll the original 77-byte object-name VRAM stream without changing its
-  writes or CPU contract. Add differential tests for both paths.
+- Preserve full OAM uploads for correctness. Unroll the original 77-byte
+  object-name VRAM stream without changing its writes or CPU contract. Add
+  differential tests for the stream.
 - Generate packed offsets and bounds for every Frieza frame and mirror, then
   emit fully visible foreground sprites directly instead of rebuilding generic
   meta-sprites. The fast path is 0.83 lines in the full-party profile; edges,
   back placement and capacity limits retain the generic renderer.
-- Skip bank dispatch for idle NMI modules and keep queued companion work off
-  the crowded native phase zero. This removes Mech Rider and grass-transform
-  vblank overruns in the current checks.
+- Skip bank dispatch for idle NMI modules.
 - Add real-input Hydra and Mech Rider combat cases. Current open timing:
   Mech Rider one CPU miss, Hydra four, Frieza orbit two and Thanatos fighting
   seven; walking is zero-drop once the real arrival-song upload finishes during

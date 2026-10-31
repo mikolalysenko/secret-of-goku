@@ -1898,20 +1898,17 @@ This scene is **not** included in the earlier 78-run zero-drop claim.
 
 ## Native OAM and boss follow-up — October 30, 2026
 
-The native rendering checkpoint bounds each field OAM upload to the used low
-table and the complete high table. A native full clear forces the next upload
-to cover the whole low table, and ring/menu OAM always uses the full table
-because it has no field high-water mark. Object-name VRAM streaming keeps all
-77 original CPU writes but unrolls the loop. Differential tests cover 256
-source buffers, all registers and flags. Core OAM/order/cleanup and all 25
-browser ring-icon comparisons pass.
+Object-name VRAM streaming keeps all 77 original CPU writes but unrolls the
+loop. Differential tests cover 256 source buffers, all registers and flags.
+Full OAM uploads are retained: the bounded-DMA experiment was reverted after
+its ring/menu and VRAM regressions. Core OAM/order/cleanup, VRAM batching and
+all 25 browser ring-icon comparisons pass.
 
 Frieza now has generated packed offsets and bounds for all 32 frames and both
 mirrors. Fully visible foreground sprites use direct front staging; the fast
 path measures 0.83 lines, with generic rendering retained for edges, back
 placement and capacity limits. The complete Frieza suite passes. Idle NMI
-callbacks are filtered before their bank calls, removing the remaining Mech
-Rider and grass-transformation vblank overruns.
+callbacks are filtered before their bank calls.
 
 New controller-driven native boss cases run Hydra and Mech Rider with punches,
 ki, a full charge and Focus. Current open misses are Mech Rider 1/240, Hydra
