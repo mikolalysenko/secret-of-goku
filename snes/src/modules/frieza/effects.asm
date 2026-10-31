@@ -15,9 +15,12 @@
 !fzb_x      = 2                       ; word: map x of the large burst
 !fzb_y      = 4                       ; word: map y
 !fzb_it     = 6                       ; byte i (0-8), byte t (age)
+!fzb_count  = !FZHB+$69C              ; word: live entries (the common case is none)
 
 ; Forget the table (per-visit reset).
 fz_lb_reset:
+	LDA.w #$0000
+	STA.l !fzb_count
 	LDX.w #(!FZB_N-1)*8
 -	LDA.w #$FFFF
 	STA.l !FZB+!fzb_handle,X
@@ -77,9 +80,15 @@ fz_lb_spawn:
 	STA !fz_ay
 	JSR fz_fx_explode_turned          ; -> C clear, A = handle
 	LDX !fz_t7
-	BCC +
+	BCS .failed
+	LDA.l !fzb_count
+	INC
+	STA.l !fzb_count
+	BRA .store
+.failed
 	LDA.w #$FFFF                      ; fx full: nothing to move
-+	STA.l !FZB+!fzb_handle,X
+.store
+	STA.l !FZB+!fzb_handle,X
 	; restore the centre for the caller
 	LDA.l !FZB+!fzb_x,X
 	STA !fz_ax
@@ -131,6 +140,8 @@ fz_lb_offset:
 
 ; Every frame: age the tracked bursts, move the outgoing ones.
 fz_lb_tick:
+	LDA.l !fzb_count
+	BEQ .out
 	LDX.w #0
 .loop
 	LDA.l !FZB+!fzb_handle,X
@@ -146,6 +157,9 @@ fz_lb_tick:
 	BCC +
 	LDA.w #$FFFF                      ; its seven frames are over
 	STA.l !FZB+!fzb_handle,X
+	LDA.l !fzb_count
+	DEC
+	STA.l !fzb_count
 	BRA .next
 +	STA !fz_t5                        ; t
 	LDA.l !FZB+!fzb_it,X
@@ -174,6 +188,7 @@ fz_lb_tick:
 	TAX
 	CPX.w #!FZB_N*8
 	BCC .loop
+.out
 	RTS
 
 ; ---------------------------------------------------------------------------

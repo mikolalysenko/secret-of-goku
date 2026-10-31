@@ -1895,3 +1895,27 @@ native phase 3. Native/FX cell ownership, held-picture tile hashes and girl
 one-frame transient checks are clean. Experiments that deferred scripted
 companion AI were reverted: core's live party test showed timer starvation.
 This scene is **not** included in the earlier 78-run zero-drop claim.
+
+## Native OAM and boss follow-up — October 30, 2026
+
+The native rendering checkpoint bounds each field OAM upload to the used low
+table and the complete high table. A native full clear forces the next upload
+to cover the whole low table. Object-name VRAM streaming keeps all 77 original
+CPU writes but unrolls the loop. Differential tests cover 256 source buffers,
+all registers and flags. Core OAM/order/cleanup tests pass.
+
+Frieza now has generated packed offsets and bounds for all 32 frames and both
+mirrors. Fully visible foreground sprites use direct front staging; the fast
+path measures 0.83 lines, with generic rendering retained for edges, back
+placement and capacity limits. The complete Frieza suite passes. Idle NMI
+callbacks are filtered before their bank calls, removing the remaining Mech
+Rider and grass-transformation vblank overruns.
+
+New controller-driven native boss cases run Hydra and Mech Rider with punches,
+ki, a full charge and Focus. Current open misses are Mech Rider 1/240, Hydra
+4/240 and Frieza orbit 2/660. Thanatos remains at 23/1440: 15 synchronous
+arrival-song (`$3B`) loader stalls and eight native combat/event peaks. A direct
+Frieza path removes much of the module cost, but native phase scheduling still
+changes the exact miss set. These measurements are open work, not a zero-drop
+claim. Normal combat, all Frieza stages, the full Vegeta battle, Mana Beast and
+the ending pass their behavioral and rendering checks.

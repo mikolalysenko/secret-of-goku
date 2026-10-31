@@ -185,6 +185,17 @@ export async function generate({repo,outDir,rom:baseRom,xdata}){
   }
   out.push('frieza_ghost_pack:',...words(pack),'frieza_ghost_box:',...words(box));
 
+  // Every frame and mirror: the same biased offsets and bounds for the main
+  // sprite's fully visible front path (sprite.asm fz_spr_front).
+  const spritePack=[],spriteBox=[];
+  for(const fr of frames)for(const mirror of[0,1]){
+    const at=fr.pieces.map(([dx,dy])=>[mirror?-dx-16:dx,dy]);
+    for(let i=0;i<8;i++)spritePack.push(i<fr.n?((at[i][1]+128)<<8)|(at[i][0]+128):0);
+    spriteBox.push(Math.min(...at.map(p=>p[0])),Math.max(...at.map(p=>p[0])),Math.min(...at.map(p=>p[1])),Math.max(...at.map(p=>p[1])));
+    if(at.some(([x,y])=>x<-128||x>127||y<-128||y>127))throw Error(`frieza gen: frame ${fr.id} offsets out of range`);
+  }
+  out.push('frieza_sprite_pack:',...words(spritePack),'frieza_sprite_box:',...words(spriteBox));
+
   // Palettes (BGR555, 16 entries, entry 0 transparent): normal, the boss
   // death flashes of boss-victory.js bossDeathColor() (red phases 0-1,
   // white phases 2-3), and the afterimages' colour.

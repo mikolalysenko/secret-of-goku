@@ -170,7 +170,14 @@ core_party_work:
 	BNE +
 	JMP .done
 +
-	; Target selection and arrival/camera frames are the expensive parts of a
+	; Native phase zero is the expensive boss/actor construction pass in the
+	; crowded mounted-boss arenas. Queued jobs have four lighter phases in
+	; which to finish before the next native tick; do not spend one up front.
+	LDA.w $0056
+	AND.b #$FF
+	BNE +
+	JMP .done
++	; Target selection and arrival/camera frames are the expensive parts of a
 	; teleport. Run queued companion work in its light middle frames instead;
 	; the chord guard also covers the press frame before flight starts it.
 	LDA.l !core_pad+1

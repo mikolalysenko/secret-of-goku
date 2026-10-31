@@ -4,6 +4,25 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native rendering and combat performance checkpoint (2026-10-30)
+
+- Bound field OAM uploads to the used low table plus the full high table,
+  preserving native cleanup and forcing a full refresh after native clears.
+  Unroll the original 77-byte object-name VRAM stream without changing its
+  writes or CPU contract. Add differential tests for both paths.
+- Generate packed offsets and bounds for every Frieza frame and mirror, then
+  emit fully visible foreground sprites directly instead of rebuilding generic
+  meta-sprites. The fast path is 0.83 lines in the full-party profile; edges,
+  back placement and capacity limits retain the generic renderer.
+- Skip bank dispatch for idle NMI modules and keep queued companion work off
+  the crowded native phase zero. This removes Mech Rider and grass-transform
+  vblank overruns in the current checks.
+- Add real-input Hydra and Mech Rider combat cases. Current open timing:
+  Mech Rider one CPU miss, Hydra four, Frieza orbit two and Thanatos 23
+  (15 synchronous `$3B` loader stalls plus eight native combat/event peaks).
+  These are not zero-drop claims. Full Frieza and Vegeta suites, normal combat,
+  Mana Beast/finale and core rendering checks pass.
+
 ## Popoi's shocked face in the Frieza showdown (2026-10-30)
 
 - Popoi now faces the camera with his native full-body shout (frame `$D8`,

@@ -534,6 +534,7 @@ fz_spr_draw:
 	BNE .emit
 	RTS
 .emit
+	STA !fz_t3                        ; the displayed frame (a missing pose may lag one)
 	ASL
 	TAX
 	LDA.l frieza_frame_table,X
@@ -593,12 +594,125 @@ fz_spr_draw:
 	LDA !fz_spr_fl
 	AND.w #!FZD_BACK
 	BNE .back
+	JSR fz_spr_front
+	BCC .generic
+	RTS
+.generic
 	LDA !fz_t0
 	JSL core_oam_meta_front           ; in front while the front slots last
 	RTS
 .back
 	LDA !fz_t0
 	JSL core_oam_meta
+	RTS
+
+; Fully visible main sprite in the foreground: the generated biased offsets
+; take one add per piece. Return C set after staging every piece, or clear to
+; keep the generic path (screen edges, insufficient room or back placement).
+fz_spr_front:
+	LDA !fz_t3
+	ASL
+	STA !fz_t4                        ; displayed frame * 2
+	LDA !fz_spr_fl
+	AND.w #$0001
+	CLC
+	ADC !fz_t4
+	STA !fz_t4                        ; frame * 2 + mirror
+	; Bounds: every 16x16 piece wholly inside x 0-255, y 0-223.
+	ASL
+	ASL
+	TAX
+	LDA !fz_spr_x
+	CLC
+	ADC.l frieza_sprite_box,X
+	BPL +
+	JMP .no
++	LDA !fz_spr_x
+	CLC
+	ADC.l frieza_sprite_box+2,X
+	CMP.w #241
+	BCC +
+	JMP .no
++	LDA !fz_spr_y
+	CLC
+	ADC.l frieza_sprite_box+4,X
+	BPL +
+	JMP .no
++	LDA !fz_spr_y
+	CLC
+	ADC.l frieza_sprite_box+6,X
+	CMP.w #209
+	BCC +
+	JMP .no
++	; Front slots and the rounded native reservation must fit every piece.
+	LDA.w !core_oam_front_n&$FFFF
+	CLC
+	ADC !fz_t0
+	CMP.w #17
+	BCC +
+	JMP .no
++	CLC
+	ADC.w #3
+	AND.w #$FFFC
+	ASL
+	ASL
+	CLC
+	ADC.w !core_oam_cursor&$FFFF
+	CMP.w !core_oam_limit&$FFFF
+	BEQ +
+	JMP .no
++	; K = (y - 128) << 8 | (x - 128): packed offset + K is OAM x/y.
+	LDA !fz_spr_y
+	SEC
+	SBC.w #128
+	XBA
+	AND.w #$FF00
+	STA !fz_t6
+	LDA !fz_spr_x
+	SEC
+	SBC.w #128
+	CLC
+	ADC !fz_t6
+	STA !fz_t6
+	LDA !fz_t4
+	ASL
+	ASL
+	ASL
+	STA !fz_t4                        ; packed offset table index
+	LDA.l !core_spr_tile
+	STA !fz_t1                        ; piece 0's tile word (+2 per piece)
+	LDA !fz_t0
+	STA !fz_m0
+	LDX !fz_t4
+.loop
+	LDA.l frieza_sprite_pack,X
+	CLC
+	ADC !fz_t6
+	LDY.w !core_oam_front_n&$FFFF
+	TYA
+	ASL
+	ASL
+	TAY
+	STA.w !core_oam_front&$FFFF,Y
+	LDA !fz_t1
+	STA.w (!core_oam_front&$FFFF)+2,Y
+	INC
+	INC
+	STA !fz_t1
+	TYA
+	LSR
+	TAY
+	LDA.w #$0000                    ; small, fully on-screen: no high bits
+	STA.w !core_oam_front_hi&$FFFF,Y
+	INC.w !core_oam_front_n&$FFFF
+	INX
+	INX
+	DEC !fz_m0
+	BNE .loop
+	SEC
+	RTS
+.no
+	CLC
 	RTS
 
 ; ---------------------------------------------------------------------------

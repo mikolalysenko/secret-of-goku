@@ -64,12 +64,38 @@ modules_field_nmi:
 	JSL destroy_field_nmi            ; first: switches the breach's HDMA on while vblank lasts
 	JSL combat_field_nmi             ; before goku: a press's first cell (SNES-only)
 	JSL goku_nmi
+	; Idle callbacks cost no bank dispatch. These are the same guards as the
+	; modules' own first tests; active scenes take the identical full path.
+	LDA.l $7E0000|!fz_wasidle
+	BMI .frieza
+	BRA .noFrieza
+.frieza
 	JSL frieza_field_nmi
+.noFrieza
+	LDA.l !orbit_state
+	AND.w #$00FF
+	BEQ .noOrbit
 	JSL orbit_field_nmi
+.noOrbit
+	LDA.l $7E0000|!vg_on
+	AND.w #$00FF
+	CMP.w #!VG_ON
+	BNE .noVegeta
 	JSL vegeta_nmi
+.noVegeta
+	LDA.l !ending_live
+	AND.w #$00FF
+	BEQ .noEnding
 	JSL ending_nmi
+.noEnding
 	JSL fx_nmi                 ; programs HDMA channels 2/3 after all vblank DMA
+	LDA.l !ui_sc
+	BIT.w #!UISC_DRAW
+	BEQ .noReadout
+	LDA.l !sc_pal
+	BEQ .noReadout
 	JSL ui_sc_field_nmi       ; four CPU colour bytes, after FX palettes; no DMA
+.noReadout
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:

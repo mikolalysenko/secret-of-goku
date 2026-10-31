@@ -30,9 +30,10 @@ function machine(){
     const r=at(a);return r>=0?ram[r]:rom[hiromToPc(a,rom.length)];
   },cpuWrite:(a,v)=>{if(a>>>16===0x31){sram[a&65535]=v;return;}const r=at(a);assert(r>=0);ram[r]=v;}});
   ram.writeUInt16LE(130,0xDC);sram.writeUInt16LE(130,map);sram.writeUInt16LE(0x5150,magic);sram[0x6001]=1;
+  ram[0x56]=1;
   ram[0xE200]=ram[0xE400]=1;
-  function run(name,{actor=0x200,bank=0x7E,scanline=0,m8=true}={}){
-    const entry=symbols.get(name);assert(entry,`missing ${name}`);line=scanline;
+  function run(name,{actor=0x200,bank=0x7E,scanline=0,m8=true,phase=1}={}){
+    const entry=symbols.get(name);assert(entry,`missing ${name}`);line=scanline;ram[0x56]=phase;
     cpu.reset();cpu.e=false;cpu.m=m8;cpu.x=false;cpu.r[0]=bank;cpu.r[1]=entry>>>16;
     cpu.br.set([0xABCD,actor,0xBEEF,0x1FFD,entry&65535,0]);
     ram.writeUInt16LE(0x6FFF,0x1FFE);
@@ -59,7 +60,7 @@ test('companion work waits for time, keeps the oldest member first and has a dea
   assert.deepEqual(calls,[]);assert.equal(sram[pending],3);
   sram[age1]=2;run('core_party_work',{scanline:89,bank:0x80});
   assert.deepEqual(calls,[0x400]);assert.equal(sram[pending],1);assert.equal(sram[age1],0);
-  sram[age0]=4;run('core_party_work',{scanline:200,bank:0});
+  sram[age0]=4;run('core_party_work',{scanline:0,bank:0});
   assert.deepEqual(calls,[0x400,0x200]);assert.equal(sram[pending],0);assert.equal(sram[age0],0);
 });
 
@@ -110,6 +111,14 @@ test('walking, ground punches, ki blasts, charging, beams, teleport and camera r
   }
 });
 
+test('queued companion work stays off the crowded native phase zero',()=>{
+  const {ram,sram,calls,run}=machine();sram[pending]=1;
+  ram[0x56]=0;run('core_party_work',{scanline:0,phase:0});
+  assert.equal(sram[pending],1);assert.deepEqual(calls,[]);
+  ram[0x56]=1;run('core_party_work',{scanline:0,phase:1});
+  assert.equal(sram[pending],0);assert.deepEqual(calls,[0x200]);
+});
+
 test('even continuously busy frames finish each job before the next five-frame tick',()=>{
   const {sram,calls,run}=machine();
   const scheduled=[0,0];
@@ -123,7 +132,7 @@ test('even continuously busy frames finish each job before the next five-frame t
       sram[queuing]=0;scheduled[member]++;
     }
     assert(Math.max(sram[age0],sram[age1])<=4,'deadline exceeded');
-    run('core_party_work',{scanline:200});
+    run('core_party_work',{scanline:0,phase:frame%5});
   }
   assert.equal(sram[pending],0);
   assert.deepEqual(scheduled,[20,20]);
@@ -159,9 +168,9 @@ test('ending a teleport cannot run a fresh companion alongside an older queued j
   run('fl_hook_passenger_ai',{actor:0x400});
   assert.deepEqual(calls,[]);assert.equal(sram[pending],3);
   sram[queuing]=0;
-  run('core_party_work',{scanline:200});
+  run('core_party_work',{scanline:0,phase:1});
   assert.deepEqual(calls,[0x200]);assert.equal(sram[pending],2);
-  run('core_party_begin');run('core_party_work',{scanline:0});
+  run('core_party_begin');run('core_party_work',{scanline:0,phase:1});
   assert.deepEqual(calls,[0x200,0x400]);assert.equal(sram[pending],0);
 });
 

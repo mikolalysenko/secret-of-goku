@@ -70,9 +70,27 @@ fz_encounter:
 	LDA.w #!FZE_FRIEZA
 	RTS
 .lich
+	LDX !fzl_base
+	CPX.w #$FFFF
+	BNE .cached
 	LDA.w #!FZ_SPECIES_LICH
 	JSR fz_find_boss
 	BCC .none
+.cached
+	; The Lich's slot is cached by fz_lich_tick. Validate that live actor
+	; directly rather than rescanning every enemy on each encounter query.
+	LDA $E000,X
+	LSR
+	BCC .none
+	LDA $E180,X
+	AND.w #$00FF
+	CMP.w #!FZ_SPECIES_LICH
+	BNE .none
+	LDA $E182,X
+	BEQ .none
+	LDA $E191,X
+	AND.w #$0080
+	BNE .none
 	LDA.w #!FZE_THANATOS
 	RTS
 .none
@@ -93,27 +111,35 @@ fz_death_tick:
 	BEQ +
 	CMP.w #253
 	BNE .forget
-+	JSR fz_encounter
-	STA !fz_t0
-	; Goku fell during (or right after) a dangerous fight
-	LDA $E182
-	BNE .alive
++	LDA $E182
+	BEQ .fallen
+	; The encounter key is sticky by design (the fatal sequence also covers
+	; the moments right after a dangerous fight). Once it is known, an alive
+	; Goku needs no native boss scan on every frame.
 	LDA !fzd_key
 	AND.w #$00FF
-	ORA !fz_t0
+	BNE .out
+	JSR fz_encounter
+	STA !fz_t0
 	BEQ .out
-	JMP fz_death_start
-.alive
-	LDA !fz_t0
-	BEQ .out
-	JSR fz_can_act
-	BCC .out
+	; Remember the encounter even while a script holds control. The key only
+	; identifies the fatal sequence to use if Goku later falls; it does not
+	; start one or relax the native input lock.
 	LDA !fz_t0
 	SEP #$20
 	STA !fzd_key
 	REP #$20
 .out
 	RTS
+.fallen
+	JSR fz_encounter
+	STA !fz_t0
+	; Goku fell during (or right after) a dangerous fight
+	LDA !fzd_key
+	AND.w #$00FF
+	ORA !fz_t0
+	BEQ .out
+	JMP fz_death_start
 .forget
 	SEP #$20
 	STZ !fzd_key

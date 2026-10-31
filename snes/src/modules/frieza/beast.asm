@@ -74,13 +74,13 @@ if defined("FRIEZA_ORBIT_BOSS_LOOP") == 0
 endif
 	LDX.w #$0600
 .loop
-	LDA $E000,X
-	AND.w #$0001
-	BEQ .next
 	LDA $E180,X
 	AND.w #$00FF
 	CMP !fz_t6
 	BNE .next
+	LDA $E000,X
+	AND.w #$0001
+	BEQ .next
 	LDA $E182,X
 	BEQ .next
 	LDA $E191,X
