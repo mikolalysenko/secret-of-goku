@@ -1322,6 +1322,40 @@ core_native_obj_names:
 	CPY.b #$4D                       ; the original failed branch's flags
 	JML $C20E90
 
+if not(defined("CORE_NATIVE_DECOMPRESS_SLOW"))
+; C2:24F1, the native WRAM graphics bit decoder. Hydra's transformation
+; decodes 2,048 bytes from DB:D989 into 7F:7000 (a three-video-frame stall).
+; That fixed stream is predecoded by combat-decompress.mjs. Copy its 2,049
+; touched bytes directly, then reproduce the retail exit state. Any other
+; source, destination, count or initial history uses the original loop.
+; JML from the first five bytes, M16/X16, direct page and DB unchanged.
+core_native_decompress:
+	LDA $68
+	CMP.w #2048
+	BNE .retail
+	LDA $79
+	CMP.w #$D989
+	BNE .retail
+	LDA $7A
+	CMP.w #$DBD9
+	BNE .retail
+	LDA $7C
+	CMP.w #$7000
+	BNE .retail
+	LDA $7D
+	CMP.w #$7F70
+	BNE .retail
+	LDA $6A
+	ORA $6C
+	BNE .retail
+	JML combat_native_hydra_copy
+.retail
+	SEP #$10
+	CLC
+	LDA $68
+	JML $C224F6
+endif
+
 if not(defined("CORE_NATIVE_GRAPHICS_MVN"))
 ; Fixed, disjoint ROM -> WRAM copies. Descending offsets let the 1600-byte
 ; death sheet share the tail of the 2048-byte weapon copy. Each pair costs

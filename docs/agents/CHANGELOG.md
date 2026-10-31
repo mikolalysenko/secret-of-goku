@@ -14,8 +14,13 @@ stay traceable even when they are committed together.
   meta-sprites. The fast path is 0.83 lines in the full-party profile; edges,
   back placement and capacity limits retain the generic renderer.
 - Skip bank dispatch for idle NMI modules.
+- Predecode Hydra's fixed 2,048-byte native graphics stream into ROM. The
+  cached copy preserves every output byte, decoder scratch word, pointer,
+  register and flag in a retail-CPU differential test; other streams retain
+  the original decoder. Decode cost falls from 110,246 to 12,431 CPU cycles
+  and the real-input fight's missed updates from 4/240 to 2/240.
 - Add real-input Hydra and Mech Rider combat cases. Current open timing:
-  Mech Rider three CPU misses and 45 vblank overruns, Hydra four, Frieza
+  Mech Rider three CPU misses and 45 vblank overruns, Hydra two, Frieza
   orbit two and Thanatos fighting eight; walking is zero-drop once the real
   arrival-song upload finishes during setup. These are not zero-drop claims.
   Full Frieza and Vegeta suites, normal combat, Mana Beast/finale and core

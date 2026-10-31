@@ -349,6 +349,14 @@ if not(defined("CORE_NATIVE_TILES_SLOW"))
 %hijack($C1C599, core_native_tiles, 5, core)
 endif
 
+; The Hydra's 2,048-byte WRAM decode is a fixed stream. Copy its expanded
+; bytes from ROM; all other inputs keep the retail bit decoder.
+if not(defined("CORE_NATIVE_DECOMPRESS_SLOW"))
+%orig4($C224F1, $A51810E2)
+%orig1($C224F5, $68)
+%hijack($C224F1, core_native_decompress, 5, core)
+endif
+
 ; Object-name VRAM bytes (C2:0E83-0E8F): preserve every byte write and the
 ; continuation's CPU state, but do not pay the three-instruction loop per byte.
 %orig4($C20E83, $76B700A0)

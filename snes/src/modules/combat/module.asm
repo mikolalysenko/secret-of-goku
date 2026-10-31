@@ -426,6 +426,9 @@ incsrc "stats.asm"
 incsrc "effects.asm"
 incsrc "virtual.asm"
 incsrc "api.asm"
+if not(defined("CORE_NATIVE_DECOMPRESS_SLOW"))
+	incsrc "combat-decompress/copy.asm"
+endif
 combat_code_end:
 assert combat_code_end <= !CODE_COMBAT+$7000, "combat code overflows into the binding area ($A2:F000)"
 pullpc
