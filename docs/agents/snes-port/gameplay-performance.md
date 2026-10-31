@@ -1921,8 +1921,13 @@ Both entries preserve every word and the outer-loop CPU state in assembled
 retail differentials; each batch costs 15,153 → 6,210 CPU cycles. Thanatos
 fighting is consequently zero-drop over 1,440 frames (previously 8).
 
+Repeated FX assembly placements update only their moving axis, avoiding a
+second direction multiply and coordinate write per placement. The full FX
+suite passes; Mech Rider's CPU misses fall from 3/240 to 2/240, with its
+vblank overruns unchanged.
+
 New controller-driven native boss cases run Hydra and Mech Rider with punches,
-ki, a full charge and Focus. Current open misses are Mech Rider 3/240 plus 45
+ki, a full charge and Focus. Current open misses are Mech Rider 2/240 plus 45
 vblank overruns, Hydra 2/240 and Frieza orbit 2/660. Thanatos walking and
 fighting are zero-drop after the real arrival-song upload finishes during
 setup. The original `$3B` cold-import loader stall is kept out of that

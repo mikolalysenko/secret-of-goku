@@ -23,8 +23,11 @@ stay traceable even when they are committed together.
   Both assembled differential entries retain every output word and the retail
   outer-loop CPU state. Each batch falls from about 15,153 to 6,210 cycles;
   Thanatos fighting drops from 8/1440 missed updates to zero.
+- Update only the moving axis between repeated FX assembly placements. The
+  full FX suite passes and Mech Rider's CPU misses fall from three to two;
+  its vblank overruns are unchanged.
 - Add real-input Hydra and Mech Rider combat cases. Current open timing:
-  Mech Rider three CPU misses and 45 vblank overruns, Hydra two, Frieza
+  Mech Rider two CPU misses and 45 vblank overruns, Hydra two, Frieza
   orbit two. Thanatos walking and fighting are zero-drop after the real
   arrival-song upload finishes during setup.
   Full Frieza and Vegeta suites, normal combat, Mana Beast/finale and core

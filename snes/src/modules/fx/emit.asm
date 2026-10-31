@@ -686,16 +686,19 @@ fx_emit_run:
 	BMI .done                    ; moving left / up, past the edge
 ++	JSR fx_emit_slow
 .step
-	LDA !d_dx                    ; next placement
-	JSR .mulS
+	LDA !d_dy                    ; next placement: only the along axis moves
+	BNE .stepVertical
+	LDA !d_x
 	CLC
-	ADC !d_x
+	ADC !d_r0+2
 	STA !d_x
-	LDA !d_dy
-	JSR .mulS
+	BRA .stepped
+.stepVertical
+	LDA !d_y
 	CLC
-	ADC !d_y
+	ADC !d_r0+2
 	STA !d_y
+.stepped
 	LDA !d_r0
 	CLC
 	ADC !d_r0+2
