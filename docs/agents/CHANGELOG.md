@@ -7,8 +7,8 @@ stay traceable even when they are committed together.
 ## SNES native rendering and combat performance checkpoint (2026-10-30)
 
 - Bound field OAM uploads to the used low table plus the full high table,
-  preserving native cleanup and forcing a full refresh after native clears.
-  Unroll the original 77-byte object-name VRAM stream without changing its
+  preserving native cleanup and forcing a full refresh after native clears and
+  for ring/menu OAM, which has no field high-water mark. Unroll the original 77-byte object-name VRAM stream without changing its
   writes or CPU contract. Add differential tests for both paths.
 - Generate packed offsets and bounds for every Frieza frame and mirror, then
   emit fully visible foreground sprites directly instead of rebuilding generic
@@ -18,10 +18,10 @@ stay traceable even when they are committed together.
   the crowded native phase zero. This removes Mech Rider and grass-transform
   vblank overruns in the current checks.
 - Add real-input Hydra and Mech Rider combat cases. Current open timing:
-  Mech Rider one CPU miss, Hydra four, Frieza orbit two and Thanatos 23
-  (15 synchronous `$3B` loader stalls plus eight native combat/event peaks).
-  These are not zero-drop claims. Full Frieza and Vegeta suites, normal combat,
-  Mana Beast/finale and core rendering checks pass.
+  Mech Rider one CPU miss, Hydra four, Frieza orbit two and Thanatos fighting
+  seven; walking is zero-drop once the real arrival-song upload finishes during
+  setup. These are not zero-drop claims. Full Frieza and Vegeta suites, normal
+  combat, Mana Beast/finale and core rendering checks pass.
 
 ## Popoi's shocked face in the Frieza showdown (2026-10-30)
 

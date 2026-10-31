@@ -1900,9 +1900,11 @@ This scene is **not** included in the earlier 78-run zero-drop claim.
 
 The native rendering checkpoint bounds each field OAM upload to the used low
 table and the complete high table. A native full clear forces the next upload
-to cover the whole low table. Object-name VRAM streaming keeps all 77 original
-CPU writes but unrolls the loop. Differential tests cover 256 source buffers,
-all registers and flags. Core OAM/order/cleanup tests pass.
+to cover the whole low table, and ring/menu OAM always uses the full table
+because it has no field high-water mark. Object-name VRAM streaming keeps all
+77 original CPU writes but unrolls the loop. Differential tests cover 256
+source buffers, all registers and flags. Core OAM/order/cleanup and all 25
+browser ring-icon comparisons pass.
 
 Frieza now has generated packed offsets and bounds for all 32 frames and both
 mirrors. Fully visible foreground sprites use direct front staging; the fast
@@ -1913,8 +1915,10 @@ Rider and grass-transformation vblank overruns.
 
 New controller-driven native boss cases run Hydra and Mech Rider with punches,
 ki, a full charge and Focus. Current open misses are Mech Rider 1/240, Hydra
-4/240 and Frieza orbit 2/660. Thanatos remains at 23/1440: 15 synchronous
-arrival-song (`$3B`) loader stalls and eight native combat/event peaks. A direct
+4/240 and Frieza orbit 2/660. Thanatos walking is zero-drop after the real
+arrival-song upload finishes during setup; fighting still has 7/1440 misses
+from native event/actor peaks. The original `$3B` cold-import loader stall is
+kept out of that measurement window rather than assigned to combat. A direct
 Frieza path removes much of the module cost, but native phase scheduling still
 changes the exact miss set. These measurements are open work, not a zero-drop
 claim. Normal combat, all Frieza stages, the full Vegeta battle, Mana Beast and

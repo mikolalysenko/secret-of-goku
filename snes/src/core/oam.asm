@@ -831,8 +831,9 @@ endmacro
 
 ; C0:C11E, M8/X16, DB=0, D=0. Keep the native DMA and CPU return state.
 ; OAMADD must be set after DMA: the transfer advances the PPU address.
-; Only the used low table goes up, plus every high-table byte. The native
-; cleanup hides entries from this frame's end through the previous upload's
+; Only the used low table goes up in field mode, plus every high-table byte.
+; Ring/menu OAM has no field high-water mark and always uses the full table.
+; The native cleanup hides entries from this frame's end through the previous upload's
 ; end, so the larger of those two ranges covers every changed entry. A native
 ; full clear forces the next upload to cover the whole low table.
 core_oam_upload:
@@ -844,11 +845,17 @@ core_oam_upload:
 	STX.w $4370
 	STZ.w $4374
 	REP #$20
+	LDA.l !core_mode
+	CMP.w #!CORE_MODE_FIELD
+	BNE .full
 	LDA.l !core_oam_field_hw
 	CMP.l !core_oam_upload_hw
 	BCS +
 	LDA.l !core_oam_upload_hw
-+	CMP.w #$0200
++	BRA .size
+.full
+	LDA.w #$0200
+.size	CMP.w #$0200
 	BCC +
 	LDA.w #$0200
 +	CMP.w #$0004                 ; a zero DMA length means 64 KiB
