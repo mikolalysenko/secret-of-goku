@@ -1393,6 +1393,41 @@ core_ai_cadence:
 .skip
 	RTL
 
+; C1:2457's party-target setup: the healthy party's usual empty target masks
+; select nobody. Recognize that result without three status scans and three
+; complete target selections. The first mask names Goku, but his action is not
+; the targetable $02 (or his $1C flags forbid it); the other masks are empty.
+; Rejoin at 249D with the same X and frame local as the failed third selection.
+; Every other state repeats the replaced load and takes the retail loop.
+core_native_ai_party_setup:
+	LDA.w $E190
+	ORA.w $E390
+	ORA.w $E590
+	AND.w #$C57B
+	BNE .native
+	LDA.l $0000D9
+	AND.w #$0007
+	CMP.w #$0001
+	BNE .native
+	SEP #$20
+	LDA.w $E011
+	CMP.b #$02
+	BNE .noGoku
+	LDA.w $E01C
+	BEQ .native
+.noGoku
+	LDA.l $0000DA
+	ORA.l $0000DB
+	AND.b #$07
+	BNE .native
+	LDX.w #$0000
+	STZ $01
+	JML $C1249D
+.native
+	REP #$20
+	LDA.w $0190,X
+	JML $C1246C
+
 ; C1:2710: highest set bit of X, or $00FF for zero. X returns bit+1
 ; (zero for empty), Y/DB/D/P are preserved, except NZ follows PLD as in
 ; retail. The original shifts all 16 bits even for an empty target mask;

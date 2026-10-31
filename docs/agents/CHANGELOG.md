@@ -24,6 +24,10 @@ stay traceable even when they are committed together.
   Both assembled differential entries retain every output word and the retail
   outer-loop CPU state. Each batch falls from about 15,153 to 6,210 cycles;
   Thanatos fighting drops from 8/1440 missed updates to zero.
+- Skip the companion AI setup when party status and controller masks prove no
+  target. The direct path preserves all script state and costs 151 instead of
+  657 cycles per deferred job; full-party fatal-Beast lag falls from 99 to 97,
+  so the larger native workload remains open.
 - Add one-part FX run differentials for 533 assemblies and 8,528 exact edge
   cases, including missing cells and OAM exhaustion. The offscreen shortcut
   experiment was reverted: it was 0.9% slower across the corpus.

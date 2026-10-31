@@ -128,6 +128,11 @@ org $C1252F
 pullpc
 endif
 
+if not(defined("CORE_NATIVE_AI_PARTY_SETUP_SLOW"))
+%orig4($C12466, $290190BD)
+%hijack($C12466, core_native_ai_party_setup, 4, core)
+endif
+
 if not(defined("CORE_NATIVE_DISTANCE_SLOW"))
 %orig4($C10358, $20C2080B)
 %hijack($C10358, core_native_distance, 4, core)
