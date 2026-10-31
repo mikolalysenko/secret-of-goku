@@ -83,6 +83,9 @@ function test()
     check('reading_drawn', not capture)
     capture = nil
     H.shot('cast')
+    -- Keep the target alive for the timer test. Party attacks otherwise kill
+    -- it after about 87 field frames, hiding the reading before it expires.
+    H.w16(0x7EE184 + target, 999); H.w16(0x7EE182 + target, 999)
     -- one reading per landing, and it expires after 240 frames
     local seen = 0
     drawing = true
@@ -91,6 +94,9 @@ function test()
       H.wait(1)
     end
     drawing = false
+    H.result('expiry_state', {age = ui(0x58 + (target >> 8)), flags = ui(0xAE),
+      hp = H.r16(0x7EE182 + target), maxHp = H.r16(0x7EE184 + target),
+      active = H.r8(0x7EE000 + target), species = H.r8(0x7EE180 + target)})
     H.result('draw', {mean = cost.sum / math.max(1, cost.n), max = cost.max, n = cost.n})
     H.result('expired_after', H.frame - landedAt)
     H.result('expired_after_ui', (ui(0x36) - landedUi) & 0xFFFF)

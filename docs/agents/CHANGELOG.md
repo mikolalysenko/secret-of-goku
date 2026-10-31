@@ -23,6 +23,9 @@ stay traceable even when they are committed together.
   Both assembled differential entries retain every output word and the retail
   outer-loop CPU state. Each batch falls from about 15,153 to 6,210 cycles;
   Thanatos fighting drops from 8/1440 missed updates to zero.
+- Keep the Analyzer lifetime fixture's target alive after its real cast and
+  picture capture. Party attacks previously killed it after 87 field frames,
+  hiding the reading before the 240-frame expiry check could run.
 - Update only the moving axis between repeated FX assembly placements. The
   full FX suite passes and Mech Rider's CPU misses fall from three to two;
   its vblank overruns are unchanged.
