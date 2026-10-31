@@ -40,7 +40,7 @@ mkdirSync(root,{recursive:true});
 const symbols=Object.fromEntries([...readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').matchAll(/^([\dA-F]{2}):([\dA-F]{4}) (\S+)$/gmi)].map(m=>[m[3],parseInt(m[1]+m[2],16)]));
 const need=['core_field_frame','core_field_nmi_done','fx_k_aura_obj','fx_draw_current','fx_run_slots','fx_entry_tile','fx_entry_vram','fx_cell_dma','fx_aura_rows','fx_aura_asm_id','fx_asm_ptr','fx_asm_data','fx_frame','fx_finish'];
 const SYM=Object.fromEntries(need.map(n=>{if(symbols[n]===undefined)throw Error('missing symbol '+n);return [n,symbols[n]];}));
-const fight=Array(6).fill('b:30,y:20,l+y:90,none:20,l:60,none:20').join(',');
+const fight=Array(20).fill('b:30,y:20,l+y:90,none:20,l:60,none:20').join(',');
 const B='animation-audit__native__rabite-field-b',A='animation-audit__native__rabite-field-a';
 // Held Y down kills slots 4 and 3, then Goku walks toward the third Rabite
 // (slot 5) and leftward barrages kill it while more shots fly, so its
@@ -62,7 +62,7 @@ const scenes=[
   ['fight',B,0,fight,true],
   ['fight-ssj',B,1,fight,true],
   ['charge',A,0,'right:4,l+y:100,none:136',false],
-  ['fight-top',B,0,Array(4).fill('b:30,y:20,l+y:90,none:20,l:60,none:20').join(','),true,'SWEEP_FROM=-12\nSWEEP_TO=72\nSWEEP_HOLD=3'],
+  ['fight-top',B,0,fight,true,'SWEEP_FROM=-12\nSWEEP_TO=72\nSWEEP_HOLD=3'],
   ['transform',B,0,Array(4).fill('b:30,l:100,l+a:4,none:60,l+a:4,none:40').join(','),false],
   ['barrage-kill',B,0,barrage,true,'',{aura:false,slot5Numbers:1,fxClaimed:20}],
   ['barrage-kill-ssj',B,1,barrage,true,'',{aura:false,slot5Numbers:1,fxClaimed:20}],
