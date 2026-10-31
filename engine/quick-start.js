@@ -7,7 +7,7 @@ import {friezaEvents} from './frieza-events.js';
 import {cosmicDuration} from './frieza-cinematic.js';
 import {encodeText} from './event-codec.js';
 import {nameSlot} from './native-names.js';
-export const quickStartRevision='finale-polish-27';
+export const quickStartRevision='finale-polish-28';
 export const quickStartLabels={
   title:'After title',sword:'After sword / pod crash',sandship:'Sandship desert',late:'After Sunken Continent',trial:'Time Chamber: Goku versus Vegeta',
   fortress:'Mana Fortress deck',flight:'Fortress aerial shot',
