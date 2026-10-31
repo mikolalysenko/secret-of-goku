@@ -625,9 +625,8 @@ fx_emit_run:
 	CMP.w #1
 	BNE .multi
 	CPY !d_end
-	BCC +
-	JMP .step                    ; the module area is full
-+	LDA !d_r0+6
+	BCS .step                    ; the module area is full
+	LDA !d_r0+6
 	CMP.w #$FFFF
 	BEQ .step                    ; cell not resident
 	STA.w $0802,Y
@@ -685,20 +684,7 @@ fx_emit_run:
 +	LDA !d_r0
 	CMP.w #-144
 	BMI .done                    ; moving left / up, past the edge
-+	LDA !d_np                    ; a one-part strip wholly past its along edge
-	CMP.w #1
-	BNE .emitEdge
-	LDA !d_r0
-	CMP.w #-15
-	BMI .step
-	LDY.w #255
-	LDX !d_dy
-	BEQ +
-	LDY.w #223
-+	CPY !d_r0
-	BCC .step
-.emitEdge
-	JSR fx_emit_slow
+++	JSR fx_emit_slow
 .step
 	LDA !d_dy                    ; next placement: only the along axis moves
 	BNE .stepVertical

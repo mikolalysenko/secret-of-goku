@@ -1926,16 +1926,11 @@ second direction multiply and coordinate write per placement. The full FX
 suite passes; Mech Rider's CPU misses fall from 3/240 to 2/240, with its
 vblank overruns unchanged.
 
-Fully offscreen one-part FX run placements now skip the generic clipper and
-advance directly to the next placement. Full-party Hydra misses fall from
-5/240 to 2/240, while multi-part and partially visible runs retain the original
-path. The complete FX suite passes.
-
 New controller-driven native boss cases run Hydra and Mech Rider with punches,
 ki, a full charge and Focus. Every gameplay case now asserts active Primm and
 Popoi, and their quick starts recruit them. Full-party normal combat remains
 zero-drop. Current full-party open misses are Mech Rider 29/240 plus 17 vblank
-overruns, Hydra 2/240 and Frieza orbit 2/660. Thanatos walking and fighting are
+overruns, Hydra 5/240 and Frieza orbit 2/660. Thanatos walking and fighting are
 zero-drop after the real arrival-song upload finishes during setup. The
 original `$3B` cold-import loader stall is kept out of that measurement window
 rather than assigned to combat. A direct Frieza path removes much of the module
