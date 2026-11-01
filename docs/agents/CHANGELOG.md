@@ -6,6 +6,12 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Add real-input libretro field-update timing for Mech Rider, Hydra, Mana
+  Beast, Thanatos, normal combat and walking. The harness uses the ROM's
+  completed-frame counter, records every miss and supports an optional
+  zero-drop gate. It caught a constant-×128 optimization regressing Mech
+  Rider from 15 to 39 misses on bsnes despite its isolated differential;
+  that change was reverted and the reverted ROM again measures 15/240.
 - Reuse the mounted renderer's group/bit indices across its large and
   high-X OAM masks, with exact final register restoration. The visible
   differential average falls a further 253 -> 251 CPU cycles.

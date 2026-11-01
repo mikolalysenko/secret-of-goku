@@ -1987,3 +1987,19 @@ OAM masks. The packed path restores the retail final A/X/Y/P exactly; the
 same differential's visible average falls to 251 cycles. The full power-on,
 name-editor, native save, power-cycle and load scenario passes on all three
 cores as well.
+
+## Local real-input timing on libretro — November 1, 2026
+
+`gameplay/retro-timing.mjs` plays the native scene preset, applies the same
+controller script as the Mesen gameplay cases, and reads `core_frame` after
+every video frame. A zero delta means the field logic did not complete. It
+supports Mech Rider, Hydra, Mana Beast, Thanatos, ordinary combat and walking
+on Snes9x, bsnes and bsnes-accurate, with per-frame JSON and an optional
+`--max-misses=0` gate.
+
+This provides a check with different timing from Mesen, not a replacement
+for its scanline profile. On bsnes the identical full-party Mech Rider script
+measured 18/240 misses at `60b0d5d`, 15 after the mounted-sprite work, 39
+with the experimental constant-×128 shortcut, and 15 again after reverting
+it. The isolated ×128 differential passed, so the real-input regression is
+the reason that optimization was removed rather than retained.
