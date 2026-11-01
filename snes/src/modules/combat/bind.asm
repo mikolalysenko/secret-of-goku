@@ -673,7 +673,8 @@ else
 	JSR cb_charge_draw_values
 	XBA
 	AND.w #$00FF
-	CLV                          ; the former multiply/full-charge add clears V
+	; A completed fx_draw clears V. Do not clear it here: the old partial
+	; multiply preserved V when a full draw list returned before that ADC.
 	CMP.w #$0080
 	BCC .set
 endif

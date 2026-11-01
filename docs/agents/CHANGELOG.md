@@ -6,6 +6,16 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Continue the field NMI from its identical bank-$80 FastROM mirror after
+  the retail prologue, retaining the original upload order, hooks and RTI.
+  An assembled prologue regression covers register, flag and stack state;
+  Mech Rider, Hydra, Thanatos, Mana Beast and ordinary-battle presets pass
+  on Snes9x, bsnes and bsnes-accurate.
+- Preserve the partial-charge orb's overflow flag when a full FX draw list
+  returns early. All 9,981 assembled charge/FX comparisons pass, with the
+  optimized pair at 771 versus 900 CPU cycles. Initialize the OAM commit
+  fixture's pending-upload flags explicitly so its randomized seed cannot
+  invoke the unrelated pending-cell hide pass.
 - Use the non-moving audio cache policy explicitly for Vegeta's `$3E/$3F`
   arrangements on their first visit, without moving the cue or changing loader
   order. Intro misses fall from 28 to 25 and transformation lag from 25 to 11;

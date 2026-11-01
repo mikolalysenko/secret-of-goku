@@ -905,6 +905,16 @@ core_native_hp_request:
 	LDA.b #$00
 	JML $81E32B                  ; original PHA / PLB / wait and redraw
 
+; The field NMI enters through bank $00, whose ROM fetch is slow even after
+; MEMSEL enables FastROM. Its prologue has established M16/X16 by C0AF;
+; reproduce the direct-page setup and continue at the identical bank-$80
+; mirror. All following branches and bank-local JSRs retain their addresses,
+; while the existing C148/C14E hooks and the final RTI are unchanged.
+core_native_nmi_fast:
+	LDA.w #$0000
+	TCD
+	JML $80C0B3
+
 ; C0:C148's two native JSRs. The tilemap routine is position independent;
 ; keep a byte-identical local copy to avoid its RTS bank bridge. The HUD
 ; routine uses bank $80's identical mapping and returns through B294's RTL.

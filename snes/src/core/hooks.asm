@@ -468,6 +468,8 @@ endif
 ; mirrors. Transfers, register writes and the original return state stay
 ; identical; only instruction fetches and the RTS bank bridge change.
 if not(defined("CORE_NATIVE_NMI_SLOW"))
+%orig4($C0C0AF, $5B0000A9)
+%hijack($C0C0AF, core_native_nmi_fast, 4, core)
 %orig4($C0C148, $20C69220)
 %orig2($C0C14C, $C238)
 %hijack_jsl($C0C148, core_native_field_uploads, 6, core)

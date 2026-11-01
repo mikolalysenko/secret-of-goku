@@ -29,6 +29,7 @@ const cpu=new context.Cpu({
 const cursorAt=0x6E90,frontN=0x6E94,front=0x6EC0,hi=0x6F00,watermark=0x21494,first=0x21497;
 function run(n,cursor,pattern=0,flight=0){
   seed.copy(ram);ram.writeUInt16LE(n,frontN);ram.writeUInt16LE(cursor,cursorAt);
+  ram.writeUInt16LE(0,0x2183E); // !core_fx_pbig: no pending native-cell hides
   ram[0xD900]=flight;
   for(let i=0;i<n;i++)ram.writeUInt16LE((pattern>>((i&3)*2))&3,hi+i*2);
   const want=Buffer.from(ram),group=(n+3)&~3,shift=group*4;

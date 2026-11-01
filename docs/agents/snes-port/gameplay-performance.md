@@ -1956,3 +1956,20 @@ rather than assigned to combat. A direct Frieza path removes much of the module
 cost. The remaining boss measurements above are open work, not a zero-drop
 claim. Normal combat, all Frieza stages, the full Vegeta battle, Mana Beast and
 the ending pass their behavioral and rendering checks.
+
+## Field NMI FastROM continuation — November 1, 2026
+
+The native field NMI entered through bank `$00`, leaving most of its
+instruction fetches on SlowROM even after MEMSEL enabled FastROM. The C0AF
+hook now reproduces the retail direct-page setup and continues at C0B3 in the
+identical bank-`$80` mirror. Native DMA, register writes, existing upload
+hooks and the final RTI keep their original order. `nmi-fast.test.mjs`
+checks the assembled prologue across flag combinations, including its stack
+and register contract.
+
+The strict build passes, as do Mech Rider, Hydra, Thanatos, Mana Beast and
+ordinary-battle presets on Snes9x, bsnes and bsnes-accurate. The same pass
+fixed an unrelated exactness failure in the optimized charge orb: a full
+draw list must preserve the incoming overflow flag, as the retail partial
+multiply did. All 9,981 charge/FX state comparisons and the complete OAM
+capacity/high-bit matrix pass.
