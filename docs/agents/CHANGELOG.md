@@ -4,6 +4,16 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES Action Grid sprite fix (2026-11-01)
+
+- Keep Goku's full-screen menu figure at OBJ priority 3 instead of inheriting
+  the native marker's priority. Placing the marker in the Action Grid drops
+  the native cells to priority 0, which made Goku disappear behind the grid;
+  both base and Super Saiyan figures now remain visible after moving. The
+  menu regression now requires that visible priority rather than codifying
+  the native marker's hidden state. Verified with strict builds and real
+  libretro input captures of Status and Action Grid in both forms.
+
 ## SNES native combat timing checkpoint (2026-11-01)
 
 - Validate the cached Beast body slot before rescanning native actors, and

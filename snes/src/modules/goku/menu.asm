@@ -228,10 +228,8 @@ goku_menu_find:
 	LSR
 	SEP #$20
 	STA !m_entry
-	LDA !MENU_OAM+3,X
-	AND.b #$30               ; the figure's priority
-	ORA.b #$03               ; palette 1, name table 2
-	STA !m_attr
+	LDA.b #$33               ; priority 3, palette 1, name table 2
+	STA !m_attr              ; stay above a placed grid's hidden native marker
 	SEC
 	RTS
 

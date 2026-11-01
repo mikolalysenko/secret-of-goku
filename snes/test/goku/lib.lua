@@ -127,13 +127,14 @@ end
 -- at (x - 8, y), both cells of the form in VRAM, palette 1 = his.
 function G.check_figure(tag, form)
   -- The menu changes its buffer after its own upload (the Action Grid's
-  -- flash toggles priorities); OAM, Goku's edits included, catches up at the
-  -- next upload. Compare once both agree.
+  -- flash toggles the native marker's priority); OAM, Goku's edits included,
+  -- catches up at the next upload. The replacement always stays above the
+  -- grid, including when the native marker hides behind a placed cell.
   for _ = 1, 3 do
     local e0 = H.r8(G.MENU.entry)
     local b0 = G.menu_buf(e0)
     local o0 = G.oam_entry(120)
-    if (o0.attr & 0x30) == (b0.attr & 0x30) and o0.y == b0.y then break end
+    if (o0.attr & 0x30) == 0x30 and o0.y == b0.y then break end
     H.wait(1)
   end
   local e = H.r8(G.MENU.entry)
@@ -151,7 +152,7 @@ function G.check_figure(tag, form)
     local o = G.oam_entry(120 + q)
     local ex = (x0 + (q & 1) * 16) & 0x1FF
     local ok = o.x == (ex & 0xFF) and (o.hi & 1) == (ex >> 8) and o.y == b.y + (q >> 1) * 16 and
-      o.tile == base + q * 2 and (o.attr & 0xCF) == 0x03 and (o.attr & 0x30) == (b.attr & 0x30) and (o.hi & 2) == 2
+      o.tile == base + q * 2 and (o.attr & 0xCF) == 0x03 and (o.attr & 0x30) == 0x30 and (o.hi & 2) == 2
     G.check(ok, string.format('%s: quadrant %d at %d,%d tile %02X attr %02X hi %d', tag, q, o.x, o.y, o.tile, o.attr, o.hi))
   end
   local sheet = form == 1 and 252 or 0

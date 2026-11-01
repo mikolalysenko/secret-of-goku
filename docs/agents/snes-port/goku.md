@@ -258,8 +258,9 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
     entries a multiple of 4, as in every menu) is found in the menu's OAM
     buffer (`7E:9C00`); while OBJ palette 1 holds the boy's colours (read
     back from CGRAM; all 15 compared the first time, 3 after) or Goku's,
-    it becomes his 32×32 front idle cell at (x - 8, y) with the figure's
-    priority, and the pose state advances as `pose({menu:true})` does
+    it becomes his 32×32 front idle cell at (x - 8, y) with priority 3,
+    including after the Action Grid's native marker drops behind a placed
+    cell, and the pose state advances as `pose({menu:true})` does
     (idle, row 0, the idle blink every 180 frames). Idle and blink cells
     both stay in VRAM, so the blink is an OAM tile change. Covers Status,
     the Action Grid (it follows the figure and its flashing) and the save
@@ -414,7 +415,8 @@ transition palettes follow the browser's `transform` clip).
   opened from Goku's own ring (X; his ring opens on the config ring, the
   native boy's on his weapon ring):
   the boy's entries hidden in OAM but kept in the buffer, Goku's four
-  quadrants at (x - 8, y) with the figure's priority, idle and blink cells
+  quadrants at (x - 8, y) with priority 3 even when the placed native
+  marker drops to priority 0, idle and blink cells
   in VRAM byte for byte, palette 1 = the form's; the blink shows for 5
   frames; with Goku inactive OAM equals the menu buffer and palette 1 the
   boy's. Scanline at which the menu hook ends (max < 258).
