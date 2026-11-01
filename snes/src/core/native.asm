@@ -1346,6 +1346,17 @@ core_native_obj_names:
 	CPY.b #$4D                       ; the original failed branch's flags
 	JML $C20E90
 
+; C0:5D60 clears the native 512-byte FE00-FFFF work buffer. The caller has
+; already selected M16/X16, DB 7E, A = 0, X = FE00 and Y = 256. Preserve the
+; ascending word writes and wrapped X/Y result without the per-word loop.
+core_native_fe_clear:
+	for word = 0..256
+		STA.w $FE00+(!word*2)
+	endfor
+	LDX.w #$0000
+	LDY.w #$0000
+	JML $C05D68
+
 if not(defined("CORE_NATIVE_DECOMPRESS_SLOW"))
 ; C2:24F1, the native WRAM graphics bit decoder. Hydra's transformation
 ; decodes 2,048 bytes from DB:D989 into 7F:7000 (a three-video-frame stall).

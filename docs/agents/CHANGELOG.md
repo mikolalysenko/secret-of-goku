@@ -6,6 +6,10 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Unroll the native 512-byte `$FE00-$FFFF` clear with exact WRAM and exit-state
+  differentials over all flags, DP/DB variants and stack edges. Cost falls from
+  3,881 to 1,336 cycles; Hydra's five-phase total improves from 10 to 9 misses,
+  while its default remains 2/240 and open. The full core suite passes.
 - Add the real-input full-party `beast-punch` gameplay benchmark. It passes
   correctness, palette, stamina, OBJ and NMI checks and exposes 40/240 open
   timing misses during the heavy script; native actors dominate, with flight

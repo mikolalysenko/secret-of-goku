@@ -365,6 +365,11 @@ if not(defined("CORE_NATIVE_TILES_SLOW"))
 %hijack($C1C599, core_native_tiles, 5, core)
 endif
 
+; The native FE00 work-buffer clear keeps its exact writes and exit state.
+%orig4($C05D60, $E800009D)
+%orig4($C05D64, $F8D088E8)
+%hijack($C05D60, core_native_fe_clear, 8, core)
+
 ; The Hydra's 2,048-byte WRAM decode is a fixed stream. Copy its expanded
 ; bytes from ROM; all other inputs keep the retail bit decoder.
 if not(defined("CORE_NATIVE_DECOMPRESS_SLOW"))

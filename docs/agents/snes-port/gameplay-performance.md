@@ -1916,6 +1916,13 @@ the assembled retail differential), reducing the old solo fight's misses from
 4/240 to 2/240; the three-video-frame decompression stall is gone. Other streams
 keep the original decoder.
 
+The native 512-byte `$FE00-$FFFF` work-buffer clear is unrolled as well. Its
+assembled differential compares all WRAM, registers, flags and stack over every
+processor-flag combination, three direct pages, three data banks and eight
+stack positions; cost falls from 3,881 to 1,336 cycles. Hydra's five-start-phase
+total improves from 10 to 9 misses (the default run remains 2/240), so this is
+partial relief rather than a complete Hydra timing fix.
+
 The two native 14-call pattern-paint loops now run as fixed-page batches.
 Both entries preserve every word and the outer-loop CPU state in assembled
 retail differentials; each batch costs 15,153 → 6,210 CPU cycles. Thanatos
