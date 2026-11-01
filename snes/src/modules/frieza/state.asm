@@ -11,7 +11,7 @@ fz_on:
 	LDA.l !persist_goku_active
 	AND.w #$00FF
 	BEQ .off
-	JSR fz_guard
+	%FZ_GUARD()
 	SEC
 	RTS
 .off
@@ -138,17 +138,17 @@ fz_can_act:
 
 ; A16 = !FZFL_* mask -> Z clear when any of those flags is set.
 fz_flag:
-	JSR fz_guard
+	%FZ_GUARD()
 	AND.l !fzp_flags
 	RTS
 fz_set:
-	JSR fz_guard
+	%FZ_GUARD()
 	JSR fz_wake
 	ORA.l !fzp_flags
 	STA.l !fzp_flags
 	RTS
 fz_clear:
-	JSR fz_guard
+	%FZ_GUARD()
 	JSR fz_wake
 	EOR.w #$FFFF
 	AND.l !fzp_flags
@@ -171,27 +171,27 @@ fz_wake:
 
 ; A16 = stage byte.
 fz_stage:
-	JSR fz_guard
+	%FZ_GUARD()
 	LDA.l !fzp_stage
 	AND.w #$00FF
 	RTS
 ; Store A (low byte) as the stage.
 fz_set_stage:
-	JSR fz_guard
+	%FZ_GUARD()
 	JSR fz_wake
 	SEP #$20
 	STA.l !fzp_stage
 	REP #$20
 	RTS
 fz_set_tree:
-	JSR fz_guard
+	%FZ_GUARD()
 	JSR fz_wake
 	SEP #$20
 	STA.l !fzp_tree
 	REP #$20
 	RTS
 fz_tree:
-	JSR fz_guard
+	%FZ_GUARD()
 	LDA.l !fzp_tree
 	AND.w #$00FF
 	RTS
@@ -917,7 +917,7 @@ frieza_h_revive:                      ; C9
 	RTL
 
 frieza_h_repair_core:                 ; story: the wish repairs the core
-	JSR fz_guard
+	%FZ_GUARD()
 	LDA.l !fzp_crisis
 	AND.w #$00FF
 	BEQ +
@@ -932,7 +932,7 @@ frieza_h_repair_core:                 ; story: the wish repairs the core
 ; Story queries: A16 = value.
 
 frieza_q_crisis:
-	JSR fz_guard
+	%FZ_GUARD()
 	LDA.l !fzp_crisis
 	AND.w #!FZC_ACTIVE
 	BEQ +
@@ -1058,7 +1058,7 @@ frieza_q_beast_started:
 frieza_q_beast_won:
 	LDA.w #!FZX_WON
 fz_q_beast:
-	JSR fz_guard
+	%FZ_GUARD()
 	AND.l !fzp_beast
 	BEQ +
 	LDA.w #$0001
@@ -1388,7 +1388,7 @@ fz_sram_reset:
 ; Y = payload in bank !DEBUG_PAYLOAD_BANK (count byte, then key byte + value
 ; word entries). Carry clear = done.
 frieza_debug_preset:
-	JSR fz_guard
+	%FZ_GUARD()
 	CMP.w #!DEBUG_HOOK_FRIEZA
 	BEQ .restore
 	CMP.w #!DEBUG_HOOK_FRIEZA_EVENT

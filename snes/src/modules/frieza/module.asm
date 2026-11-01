@@ -571,6 +571,21 @@ else
 endif
 !FZ_PAYLOAD #= !DEBUG_PAYLOAD_BANK<<16
 
+; The common trusted guard needs no subroutine round trip. Keep the full
+; reset path for states that have not been checked this session.
+macro FZ_GUARD()
+	PHA
+	LDA !fz_init
+	AND.w #$00FE
+	CMP.w #$00A4
+	BEQ .trusted
+	JSL fz_guard
+	BRA .done
+.trusted
+	PLA
+.done
+endmacro
+
 ; ---------------------------------------------------------------------------
 pushpc
 org !DATA_FRIEZA

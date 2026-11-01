@@ -6,6 +6,10 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Validate the cached Beast body slot before rescanning native actors, and
+  inline Frieza's trusted persistent-state guard at 15 call sites. The full
+  reset/fallback paths remain intact; the bsnes Beast run improves from 86
+  to 85 missed updates out of 240.
 - Add Frieza court, orbit and space real-input timing runs. Each completes
   1,500 frames with zero missed field updates on bsnes.
 - Add Vegeta's real-input intro to the libretro timing harness, including

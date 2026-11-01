@@ -2046,3 +2046,8 @@ frames on bsnes.
 The `frieza-intro`, `frieza-orbit` and `frieza-space` cases apply the same
 measurement to Frieza's court, orbit and space scenes. All three are
 zero-drop over 1,500 frames on bsnes.
+
+`fz_beast_find` now validates the cached body slot directly and only falls
+back to the full scan for a dead/replaced actor. Frieza's persistent-state
+guard also inlines its common trusted check at 15 call sites, retaining the
+full reset path and balanced stack. These reduce the Beast result to 85/240.

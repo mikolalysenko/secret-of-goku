@@ -9,7 +9,7 @@ frieza_h_beast_ordinary:              ; 95
 frieza_h_beast_feed:                  ; 96
 	LDA.w #$0001
 fz_beast_choose:
-	JSR fz_guard
+	%FZ_GUARD()
 	STA !fz_t0
 	JSR fz_quest
 	XBA
@@ -29,7 +29,7 @@ fz_beast_choose:
 
 ; challenge.victory(): the native Beast fell before 42F chose the ending.
 frieza_h_beast_victory:
-	JSR fz_guard
+	%FZ_GUARD()
 	LDA.l !fzp_beast
 	AND.w #!FZX_FED|!FZX_STARTED
 	CMP.w #!FZX_FED|!FZX_STARTED
@@ -148,6 +148,29 @@ fz_find_boss_rest:
 	RTS
 endif
 
+; Validate the cached Beast slot before paying for a full actor scan.
+fz_beast_find:
+	LDX !fzx_body
+	CPX.w #$FFFF
+	BEQ .scan
+	LDA $E000,X
+	LSR
+	BCC .scan
+	LDA $E180,X
+	AND.w #$00FF
+	CMP.w #!FZ_SPECIES_BEAST
+	BNE .scan
+	LDA $E182,X
+	BEQ .scan
+	LDA $E191,X
+	AND.w #$0080
+	BNE .scan
+	SEC
+	RTS
+.scan
+	LDA.w #!FZ_SPECIES_BEAST
+	JMP fz_find_boss
+
 ; Per field frame (beast-challenge.js tick()).
 fz_beast_tick:
 	LDA $DC
@@ -159,8 +182,7 @@ fz_beast_tick:
 +	; the Beast's HP once per body: 65,535 fed, 48,000 ordinary
 	JSR fz_can_act
 	BCC .lich
-	LDA.w #!FZ_SPECIES_BEAST
-	JSR fz_find_boss
+	JSR fz_beast_find
 	BCC .lich
 	CPX !fzx_body
 	BEQ .lich
@@ -189,8 +211,7 @@ fz_beast_tick:
 	CMP.w #253
 	BEQ +
 	RTS
-+	LDA.w #!FZ_SPECIES_BEAST
-	JSR fz_find_boss
++	JSR fz_beast_find
 	BCS +
 	SEP #$20
 	STZ !fzx_bon

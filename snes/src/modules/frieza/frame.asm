@@ -50,7 +50,7 @@ endif
 	AND.w #$00FF
 	CMP.w #$00A5
 	BEQ +
-	JSR fz_guard
+	%FZ_GUARD()
 	JSR fz_reset_transient
 	SEP #$20
 	LDA.b #$A5
