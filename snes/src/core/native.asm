@@ -1413,8 +1413,6 @@ core_native_body:
 	LDA $02
 	CMP.b #3
 	BCC .native_ready          ; small bodies retain the native loop
-	PHP
-	PLA
 	AND.b #$08
 	BNE .native_ready
 	REP #$20

@@ -6,6 +6,9 @@ stay traceable even when they are committed together.
 
 ## SNES Action Grid sprite fix (2026-11-01)
 
+- Remove an unnecessary PHP/PLA pair in the native body emitter. The exact
+  8-bit flag test is unchanged; six-piece interior emission falls from 719
+  to 712 CPU cycles, with all actor/OAM differentials passing.
 - Keep Goku's full-screen menu figure at OBJ priority 3 instead of inheriting
   the native marker's priority. Placing the marker in the Action Grid drops
   the native cells to priority 0, which made Goku disappear behind the grid;

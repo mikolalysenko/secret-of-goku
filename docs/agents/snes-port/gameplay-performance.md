@@ -2051,3 +2051,7 @@ zero-drop over 1,500 frames on bsnes.
 back to the full scan for a dead/replaced actor. Frieza's persistent-state
 guard also inlines its common trusted check at 15 call sites, retaining the
 full reset path and balanced stack. These reduce the Beast result to 85/240.
+
+The native body emitter now performs its 8-bit flag test without an
+unnecessary PHP/PLA pair. All actor/OAM differentials pass; the six-piece
+interior case costs 719 -> 712 cycles.
