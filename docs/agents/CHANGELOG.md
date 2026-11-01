@@ -6,6 +6,9 @@ stay traceable even when they are committed together.
 
 ## SNES Action Grid sprite fix (2026-11-01)
 
+- Add `snes/test/goku/action-grid.mjs`: a libretro real-input regression
+  that opens the Action Grid and verifies priority 3 after opening and
+  moving, in both base and Super Saiyan forms.
 - Remove an unnecessary PHP/PLA pair in the native body emitter. The exact
   8-bit flag test is unchanged; six-piece interior emission falls from 719
   to 712 CPU cycles, with all actor/OAM differentials passing.
