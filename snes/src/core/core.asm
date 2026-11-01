@@ -111,6 +111,7 @@
 !CORE_BRIGHT_TREE     = $01        ; Frieza's Tree vista (!FZI_BRIGHT, !fzt_showbright)
 !CORE_BRIGHT_ENDING   = $02        ; the ending's black holds (!ending_showbright)
 !core_actor_hold      = !SRAM_WORK_ACTOR_HOLD ; word: a module whose picture hides every native
+!core_ending_gokuctl  = !RAM_ORBIT+$9E ; ending's full-screen Goku suppression (ending_gokuctl)
                                     ; actor writes !core_frame here in its frame code: that
                                     ; frame's vblank skips the game's actor cells (core_actor_cells)
 !core_oam_first       = !CORE_SAFE+$017 ; byte: $80 | first field OBJ, or 0 for normal order
@@ -414,6 +415,21 @@ if not(defined("CORE_PARTY_SYNC"))
 	JSR core_party_work
 endif
 	JSR core_enemy_work
+	; A full-screen ending owns every native OBJ and the HUD. Skip its hidden
+	; native visual pass; AI, collisions and companion/enemy work above still
+	; run, and the first visible frame rebuilds the native coordinates/art.
+	; ending_gokuctl excludes Goku's visible key-pose streaming hold.
+	REP #$20
+	LDA.l !core_actor_hold
+	CMP.l !core_frame
+	BNE .native_sprites
+	LDA.l !core_ending_gokuctl
+	AND.w #$00FF
+	BEQ .native_sprites
+	SEP #$20
+	BRA .sprites
+.native_sprites
+	SEP #$20
 	PHK
 	PER .sprites-1
 	PEA $B294-1

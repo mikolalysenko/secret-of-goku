@@ -177,6 +177,15 @@ and the orbit's cinematics). No window registers, colour math or HDMA
 allocations change; the disc and ring keep both windows and channels
 2/3/4/6. The prologue costs a few dozen cycles on held vblanks only.
 
+Full-screen ending frames also skip the native `C0:E38E` visual pass when
+`core_actor_hold` matches and `ending_gokuctl` proves the ending owns the
+hidden picture. The second predicate is essential: Goku uses the same hold
+for visible key-pose streaming, and native HUD/actors must not drop out there.
+Native AI, collisions and companion/enemy work still run; the first visible
+frame rebuilds native coordinates and art. The assembled fatal-Beast case
+falls from 96 to 7 lag frames, with the full ending suite, passenger, normal
+combat and orbit-return checks passing.
+
 The `dialogue` regression opens event `$134` over 13 scenarios: ordinary
 field, doomed globe, explosion disc/ring, escape, vista, flight, King Kai,
 native fatal view, fatal globe/disc/ring, and the departure globe. Every

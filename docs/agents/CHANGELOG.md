@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native combat timing checkpoint (2026-11-01)
+
+- Skip the native `C0:E38E` visual pass only when an ending owns the hidden
+  full-screen picture, using both the actor-hold frame and `ending_gokuctl` so
+  Goku's visible key-pose holds are unaffected. Native AI, collisions and
+  companion/enemy work continue. Full-party fatal-Beast falls from 96 to 7 lag
+  frames; the complete ending suite, passengers, normal combat and orbit return
+  pass.
+- Reuse the orbit beam selector's young-laser class and direction for Frieza's
+  pointer pose instead of rescanning all 12 shots. Handle the `$FFFF` off
+  sentinel and vertical class explicitly. A new `pose` case covers no-laser and
+  all 16 headings; every fight start phase, scenery, clash and return pass. The
+  typical scan saves about 1.45 scanlines, while the two damage-reaction
+  repeats remain unchanged.
+
 ## SNES native rendering and combat performance checkpoint (2026-10-30)
 
 - Preserve full OAM uploads for correctness. Unroll the original 77-byte

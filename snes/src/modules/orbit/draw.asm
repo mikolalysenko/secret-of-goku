@@ -1074,24 +1074,25 @@ fd_frieza:
 +	LDA.w #2
 	BRA .frame
 .shot
-	LDX.w #(!BS_N-1)*16
--	LDA.w !FS_BOSS+!bs_kind,X
-	CMP.w #!WK_LASER
-	BNE +
-	LDA.w !FS_BOSS+!bs_age,X
-	CMP.w #16
-	BCS +
-	LDA.w !FS_BOSS+!bs_head,X       ; flip when the shot heads right (dx > 0)
-	JSR orbit_vec
-	TXA
-	BEQ ++
-	BMI ++
+	; fd_beam_wants already selected this same young laser and beam_want
+	; encoded its class and horizontal sign. Reuse them instead of rescanning
+	; all twelve boss shots. beam_off is $FFFF, which also sets BK_LASER.
+	LDA.w !bw_key+2
+	CMP.w #$FFFF
+	BEQ .face
+	AND.w #!BK_LASER
+	BEQ .face
+	LDA.w !bw_key+2
+	AND.w #$01C0
+	CMP.w #$0100                    ; class 4: vertical, dx = 0
+	BEQ .point
+	LDA.w !bw_sx+2
+	BNE .point                      ; leftward keeps clear; rightward flips
 	INC.w !d_t0
-++	LDA.w #2
+.point
+	LDA.w #2
 	BRA .frame
-+	TXA : SEC : SBC.w #$0010 : TAX
-	BPL -
-	; facing Goku
+.face
 	LDA.w !b_x
 	CMP.w !f_hx
 	BEQ +

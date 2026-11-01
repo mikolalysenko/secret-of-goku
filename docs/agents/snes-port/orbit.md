@@ -517,6 +517,15 @@ repeats 9 on the default build (main's 2 at 248 and 524). The `clash`
 repeats 38 (main 42da923: 34): the launch 4 (1), the struggle 0 (0),
 the recoil 1 (1), the win 33 (32).
 
+The current Frieza draw reuses the young laser already selected by
+`fd_beam_wants` and its `beam_want` class/sign cache instead of scanning all
+12 boss shots again in `fd_frieza`. The `beam_off` `$FFFF` sentinel is checked
+before `BK_LASER`; class 4 keeps vertical lasers unflipped. The `pose` case
+verifies no-laser rendering and every one of the 16 headings. This saves about
+1.45 scanlines on an ordinary shot-scan frame, but does not remove the two
+native damage-reaction repeats at 248 and 524. All eight fight start phases,
+scenery, clash and return retain their state and OAM behavior.
+
 Sprite lines (`scline.asm`, the third code area): a body is 4 slivers on
 each of its lines (the small planetoid 2), and the stars' row limits
 (above) count it on its rows: where a beam crosses them with the beams'
