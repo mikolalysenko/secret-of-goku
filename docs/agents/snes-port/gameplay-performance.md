@@ -1987,3 +1987,8 @@ OAM masks. The packed path restores the retail final A/X/Y/P exactly; the
 same differential's visible average falls to 251 cycles. The full power-on,
 name-editor, native save, power-cycle and load scenario passes on all three
 cores as well.
+
+The two terrain-projection sites that always multiply by `$80` now compute
+the same product with a seven-bit shift. C2:2AA6 remains unchanged for every
+other caller and factor. Exhaustive value, flag and direct-page differentials
+preserve the full call contract, and each site costs 58 -> 37 CPU cycles.

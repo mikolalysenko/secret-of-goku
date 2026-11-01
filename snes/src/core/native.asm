@@ -1050,6 +1050,25 @@ endmacro
 %core_special_piece(core_native_special_piece, 0)
 %core_special_piece(core_native_special_piece_alt, 1)
 
+; C2:1690/16C3, M8/X16, DB=0. The caller has just stored $80 at $4E.
+; Product = $46 << 7. Keep the original carry and final high-byte N/Z,
+; skip the hardware multiplier and continue after its REP #$20.
+macro core_native_mul128(name, continuation)
+<name>:
+	PHP
+	STZ $56
+	LDA $46
+	LSR
+	STA $57
+	ROR $56
+	PLP
+	LDA $57
+	REP #$20
+	JML <continuation>
+endmacro
+%core_native_mul128(core_native_mul128_a, $C21697)
+%core_native_mul128(core_native_mul128_b, $C216CA)
+
 ; C0:C148's two native JSRs. The tilemap routine is position independent;
 ; keep a byte-identical local copy to avoid its RTS bank bridge. The HUD
 ; routine uses bank $80's identical mapping and returns through B294's RTL.
