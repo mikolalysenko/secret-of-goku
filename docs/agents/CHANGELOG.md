@@ -6,6 +6,9 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Reuse the mounted renderer's group/bit indices across its large and
+  high-X OAM masks, with exact final register restoration. The visible
+  differential average falls a further 253 -> 251 CPU cycles.
 - Inline the mounted/multi-part actor renderer's X, Y and attribute helper
   calls, with C2's original RTS preserving the caller's bank. A 4,000-case
   retail differential covers both attribute modes, clipping, high bits,

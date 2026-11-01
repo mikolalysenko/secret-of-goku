@@ -1981,3 +1981,9 @@ identical. `special-sprites.test.mjs` compares both attribute modes over
 packed high bits, scratch, final registers and flags. Across the 90 visible
 cases, the routines average 287 -> 253 CPU cycles. All 22 scene presets also
 complete on Snes9x, bsnes and bsnes-accurate.
+
+Large and high-X pieces also retain their group/bit indices across all three
+OAM masks. The packed path restores the retail final A/X/Y/P exactly; the
+same differential's visible average falls to 251 cycles. The full power-on,
+name-editor, native save, power-cycle and load scenario passes on all three
+cores as well.

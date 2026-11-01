@@ -953,11 +953,13 @@ macro core_special_piece(name, alternate)
 	STA $97
 	CLC
 	ADC.w #$0020
-	BMI .offY
-	SEC
+	BPL +
+	JMP .offY
++	SEC
 	SBC.w #$0100
-	BPL .offY
-	LDA $97
+	BMI +
+	JMP .offY
++	LDA $97
 	STA $0801,X
 	LDY.w #$0002
 	LDA ($79),Y
@@ -971,6 +973,12 @@ endif
 	LDA $97
 	STA $0802,X
 	SEP #$30
+	LDA $9C
+	BIT.b #$20
+	BNE .packedHigh
+	LDA $9A
+	BMI .packedHigh
+	; Small, low-X: one clear mask, with the retail final A/X/Y/P.
 	LDA $95
 	AND.b #$03
 	TAX
@@ -982,36 +990,49 @@ endif
 	TYA
 	AND $0A00,X
 	STA $0A00,X
-	LDA $9A
-	ASL
-	BCC .noHighX
-	LDA $95
-	AND.b #$03
-	TAX
-	LDA.l $D97F2D,X
-	TAY
-	LDA $95
-	LSR : LSR
-	TAX
-	TYA
-	ORA $0A00,X
-	STA $0A00,X
-.noHighX
 	LDA $9C
 	BIT.b #$20
-	BEQ .noLarge
+	REP #$30
+	CLC
+	JML $C220BB
+.packedHigh
+	; Large and/or high-X: retain the group and bit indices instead of
+	; deriving them again for each mask. Restore the retail final registers.
 	LDA $95
 	AND.b #$03
 	TAX
-	LDA.l $D97F31,X
-	TAY
 	LDA $95
 	LSR : LSR
-	TAX
-	TYA
-	ORA $0A00,X
-	STA $0A00,X
-.noLarge
+	TAY
+	LDA.l $C221B3,X
+	AND $0A00,Y
+	STA $0A00,Y
+	LDA $9A
+	BPL .packedLarge
+	LDA.l $D97F2D,X
+	ORA $0A00,Y
+	STA $0A00,Y
+.packedLarge
+	LDA $9C
+	BIT.b #$20
+	BEQ .packedSmall
+	LDA.l $D97F31,X
+	ORA $0A00,Y
+	STA $0A00,Y
+	PHA
+	LDA.l $D97F31,X
+	TYX
+	TAY
+	PLA
+	REP #$30
+	CLC
+	JML $C220BB
+.packedSmall
+	LDA.l $D97F2D,X
+	TYX
+	TAY
+	LDA $9C
+	BIT.b #$20
 	REP #$30
 	CLC
 	JML $C220BB
