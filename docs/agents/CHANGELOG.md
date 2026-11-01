@@ -6,6 +6,10 @@ stay traceable even when they are committed together.
 
 ## SNES Action Grid sprite fix (2026-11-01)
 
+- Fix the cold Frieza-state guard's stack corruption. Its inline slow path
+  now uses JSR with the guard's RTS and restores the saved accumulator on
+  both paths; add an assembled R fast-forward regression for quiet field
+  and dialogue states.
 - Add `snes/test/goku/action-grid.mjs`: a libretro real-input regression
   that opens the Action Grid and verifies priority 3 after opening and
   moving, in both base and Super Saiyan forms.

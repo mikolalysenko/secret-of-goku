@@ -578,12 +578,10 @@ macro FZ_GUARD()
 	LDA !fz_init
 	AND.w #$00FE
 	CMP.w #$00A4
-	BEQ .trusted
-	JSL fz_guard
-	BRA .done
-.trusted
-	PLA
+	BEQ .done
+	JSR fz_guard
 .done
+	PLA
 endmacro
 
 ; ---------------------------------------------------------------------------

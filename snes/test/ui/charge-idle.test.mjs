@@ -85,6 +85,10 @@ function compare(input){
   }
   assert.deepEqual(b.io,a.io);return [a.cycles,b.cycles];
 }
+test('R fast-forward returns through cold Frieza state validation',()=>{
+  compare({event:0,pad:0x10});
+  compare({event:0x81,pad:0x10});
+});
 test('quiet charge/beam keeps full-path state, visibility, release and later wakeups',t=>{
   for(const input of [0,2,4,6,1,3,7])for(const age of [0,1,30,31,255])
     for(const active of [0,1])for(const inputs of [0,1,2,4])
