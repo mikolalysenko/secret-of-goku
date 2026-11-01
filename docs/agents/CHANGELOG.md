@@ -6,6 +6,10 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Add the real-input full-party `beast-punch` gameplay benchmark. It passes
+  correctness, palette, stamina, OBJ and NMI checks and exposes 40/240 open
+  timing misses during the heavy script; native actors dominate, with flight
+  landing-state work and FX secondary.
 - Skip the native `C0:E38E` visual pass only when an ending owns the hidden
   full-screen picture, using both the actor-hold frame and `ending_gokuctl` so
   Goku's visible key-pose holds are unaffected. Native AI, collisions and

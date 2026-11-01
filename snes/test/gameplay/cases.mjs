@@ -22,6 +22,7 @@ export const GAMEPLAY_CASES=[
   // charge and Focus without replacing their actors with virtual targets.
   ['hexas-punch','hexas-fight','b:30,y:20,l+y:90,none:20,l:60,none:20'],
   ['rider-punch','preset__rider','b:30,y:20,l+y:90,none:20,l:60,none:20'],
+  ['beast-punch','preset__beast','b:30,y:20,l+y:90,none:20,l:60,none:20'],
 ];
 
 export const PERF_SCENES=['sword','sandship','battle','beast','fortress','flight'];
