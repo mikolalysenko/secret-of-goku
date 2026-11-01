@@ -970,7 +970,6 @@ else
 	AND.w #$DFFF
 endif
 	STA $97
-	LDA $97
 	STA $0802,X
 	SEP #$30
 	LDA $9C

@@ -2031,3 +2031,7 @@ C2:28C6 now reads each native color once instead of three times, with an
 unrolled 16-color path and the general loop for other counts. Full-state
 differentials cover six sizes, seven flag sets and six source/dest pairs.
 Cost falls 1,934 -> 1,826 cycles, with no change to the 86/240 Beast result.
+
+The mounted renderer also stores its transformed attribute directly from A,
+without reloading the same scratch word. All 4,000 differential cases match;
+the visible average falls to 247 cycles.

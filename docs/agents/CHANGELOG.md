@@ -6,6 +6,9 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Drop the mounted renderer's redundant attribute scratch reload. The
+  4,000-case differential still matches and its visible average falls
+  from 251 to 247 CPU cycles.
 - Read native palette colors once per expansion and unroll the common
   16-color call. All output planes, pointers, narrowed registers and flags
   match; the call falls from 1,934 to 1,826 CPU cycles. The Beast timing
