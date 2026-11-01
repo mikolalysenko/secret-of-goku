@@ -11,16 +11,13 @@
 !WORLD_FLY_COL_BASE = 38
 !WORLD_FLY_COL_SSJ = 34
 
-; Carry set when the Fly icon is Goku's: Goku active and the first player's
-; ring ($1802 bit 0 clear: the tracked slot remains Goku's).
+; Carry set when the Fly icon is Goku's. Both players' rings use Goku's own
+; tracked palette rather than the ring owner's native palette group.
 ; M16 X16, DB = 0. Preserves X/Y.
 world_fly_icon_ok:
 	LDA.l !persist_goku_active
 	AND.w #$00FF
 	BEQ .no
-	LDA.l $7E1802
-	LSR
-	BCS .no
 	SEC
 	RTS
 .no
@@ -142,8 +139,12 @@ world_ring_attr_hook:
 	PLA
 	AND.w #$F1FF
 	STA $06,X
-	LDA.l !pal_slot
+	LDA.l $7E0000|!pal_slot
 	AND.w #$0007
+	CMP.w #$0005
+	BEQ .slot
+	LDA.w #$0001                     ; stale/hidden actor: ordinary field slot
+.slot
 	XBA
 	ASL
 	ORA $06,X

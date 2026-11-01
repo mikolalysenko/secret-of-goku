@@ -269,9 +269,10 @@ in Super Saiyan form, every second pixel) wherever the Drum's 16×16 icon
 appears. The ring's icon builder (`D0:CA6E`, icon `$A4`) gets the goku
 module's 16×16 miniature of that cell instead of the drum art, and the icon
 sprite (`C0:7063`) follows Goku's tracked palette slot: palette 1 on ordinary
-maps, palette 5 on water maps. The icon and its colors remain stable while the
-ring is open. Only player 1's ring (`$1802` bit 0 clear): player 2's ring loads
-its item colours into palettes 4-7.
+maps, palette 5 on water maps. A stale or hidden actor slot falls back to
+palette 1. Either player's ring uses Goku's own colours rather than the ring
+owner's native palette group, and the icon and its colors remain stable while
+the ring is open.
 
 ## Mode 7 constraints and how they are met
 

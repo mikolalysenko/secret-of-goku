@@ -24,14 +24,21 @@ stay traceable even when they are committed together.
   Both assembled differential entries retain every output word and the retail
   outer-loop CPU state. Each batch falls from about 15,153 to 6,210 cycles;
   Thanatos fighting drops from 8/1440 missed updates to zero.
-- Include the companions' reunion in the good full-party ending's expected cue
-  order, but not the bad route. Hydra's preset also allows the companions to
+- Include the companions' reunion exactly once in the good full-party ending's
+  expected cue order, including a finale preset that already contains it; the
+  bad route still omits it. Hydra's preset also allows the companions to
   follow Goku into the chamber. Full-party Hydra combat is down to 2/240
   misses; fatal-Beast is 96 frames, and Mech Rider has 21 misses and 41 vblank
   overruns with the real full-party fixture.
-- Fix the Fly ring icon's palette on ordinary maps: follow Goku's tracked
-  palette slot instead of forcing palette 5. New Potos coverage verifies the
-  icon and its colors stay stable; waterfall keeps the correct palette 5.
+- Fix the Fly ring icon's palette on ordinary maps and in either player's
+  ring: read Goku's tracked slot through its WRAM bank, retain water palette 5
+  and fall back to ordinary palette 1 for a stale/hidden actor slot. Register
+  the Potos case in the world runner; both maps verify the icon and stable
+  colors.
+- Record the browser Mana Beast's actual post-eruption HP and damage timeline.
+  The cartridge regression now verifies both whole 210 hits and the resulting
+  579 HP independently of the imported native retirement phase, then restores
+  HP before the damage-cap and pending-damage checks.
 - Skip the native status-idle helper's redundant work, including the original
   final carry. Idle cost falls from 119 to 60 cycles with live state preserved;
   nonzero inputs retain the retail path. Full-party fatal-Beast lag stays 97.

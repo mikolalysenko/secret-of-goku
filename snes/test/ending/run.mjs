@@ -370,7 +370,7 @@ function endingPlan(script,outcome){
   }
   const names=[outcome==='good'?'transition':'doomed',...cues.map(id=>outcome==='bad'?BAD_CUE[CUE_OF[id]]??CUE_OF[id]:CUE_OF[id])];
   // The good full-party route includes the companions' reunion; the bad route does not.
-  if(outcome==='good')names.splice(names.indexOf('scatter')+1,0,'reunion');
+  if(outcome==='good'&&!cues.includes(endingEvents.reunion))names.splice(names.indexOf('scatter')+1,0,'reunion');
   return{cues:cues.map(id=>id.toString(16).toUpperCase().padStart(3,'0')),phases:names.map(n=>PHASE[n]),names};
 }
 const hex3=n=>n.toString(16).toUpperCase().padStart(3,'0');

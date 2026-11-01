@@ -28,10 +28,10 @@ function test()
   H.tap('up', 4, 70)
   H.shot('item_ring')
   -- the Fly icon (slot 0, tiles $E0/$E1/$F0/$F1): Goku's Super Saiyan hover
-  -- cell (column 34, row 0) at half size, drawn with palette 5
-  local icon
+  -- cell (column 34, row 0) at half size, using Goku's tracked palette slot
+  local icon, wantPal = nil, H.r8(0x7ED7FD)
   for i = 0, 127 do local e = W.oam(i); if W.visible(e) and e.tile == 0x0E0 then icon = e end end
-  W.check('fly_icon_palette', icon ~= nil and icon.pal == 5, icon and icon.pal or 'no icon')
+  W.check('fly_icon_palette', icon ~= nil and icon.pal == wantPal, icon and (icon.pal .. ' (want ' .. wantPal .. ')') or 'no icon')
   local base = W.romw(SYM.goku_sheet_base + 2)
   local cell = W.romw(SYM.goku_cell_index + (base + 34 * 4) * 2)
   local bad = 0

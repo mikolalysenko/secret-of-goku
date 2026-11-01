@@ -42,7 +42,13 @@ try{
         if(f>at){await page.evaluate(n=>mana.run(n),f-at);at=f;}
         await page.locator('#screen').screenshot({path:join(dir,`frame-${String(f).padStart(5,'0')}.png`)});
       }
-      const info=await page.evaluate(()=>({map:mana.mod.read16?mana.mod.read16(0xdc):null,status:mana.mod.status?{hp:mana.mod.status.hp}:null}));
+      const beast=preset==='beast'?await page.evaluate(()=>{
+        let hp=mana.mod.status.hp;const drops=[];
+        for(let frame=1;frame<=600;frame++){mana.run(1);const next=mana.mod.status.hp;if(next!==hp){drops.push([frame,hp-next]);hp=next;}}
+        return {hp,drops};
+      }):null;
+      const info=await page.evaluate(name=>({map:mana.mod.read16?mana.mod.read16(0xdc):null,status:mana.mod.status?{hp:mana.mod.status.hp}:null,hp600:name==='beast'?mana.mod.status.hp:null}),preset);
+      if(beast)info.beast=beast;
       let bundle=null;
       try{exportState(join(dir,'state.json'),resolve(repo,`.local/snes-import/preset__${preset}`));bundle=`.local/snes-import/preset__${preset}`;}catch(e){bundle=`not exported: ${e.message}`;}
       writeFileSync(join(dir,'info.json'),JSON.stringify({preset,frames,ms:Date.now()-t0,info,bundle,errors},null,1));
