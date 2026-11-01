@@ -2042,3 +2042,7 @@ All count, flag and pointer differentials remain exact.
 `retro-timing.mjs --case=vegeta-intro` now drives the trial and advances its
 native dialogue. The current ROM has zero missed field updates over 1,500
 frames on bsnes.
+
+The `frieza-intro`, `frieza-orbit` and `frieza-space` cases apply the same
+measurement to Frieza's court, orbit and space scenes. All three are
+zero-drop over 1,500 frames on bsnes.

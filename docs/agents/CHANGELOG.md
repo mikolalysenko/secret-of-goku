@@ -6,6 +6,8 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Add Frieza court, orbit and space real-input timing runs. Each completes
+  1,500 frames with zero missed field updates on bsnes.
 - Add Vegeta's real-input intro to the libretro timing harness, including
   native dialogue advancement. The current ROM completes its 1,500-frame
   run with zero missed field updates on bsnes.

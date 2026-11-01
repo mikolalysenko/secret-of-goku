@@ -13,8 +13,10 @@ const args=process.argv.slice(2),opt=(name,fallback)=>args.find(a=>a.startsWith(
 const name=opt('case','rider-punch'),coreName=opt('core','bsnes'),repeat=Number(opt('repeat','1'));
 const maxMisses=Number(opt('max-misses','-1'));
 const preset={ 'rider-punch':'rider','hexas-punch':'hexas','beast-punch':'beast',
-  'thanatos-fight':'thanatos','thanatos-walk':'thanatos',punch:'battle',walk:'battle','vegeta-intro':'trial'}[name];
-const row=name==='vegeta-intro'?[name,'trial','taps:1500']:GAMEPLAY_CASES.find(c=>c[0]===name);
+  'thanatos-fight':'thanatos','thanatos-walk':'thanatos',punch:'battle',walk:'battle',
+  'vegeta-intro':'trial','frieza-intro':'frieza','frieza-orbit':'orbit','frieza-space':'space'}[name];
+const special={'vegeta-intro':'trial','frieza-intro':'frieza','frieza-orbit':'orbit','frieza-space':'space'};
+const row=special[name]?[name,special[name],'taps:1500']:GAMEPLAY_CASES.find(c=>c[0]===name);
 if(!preset||!row)throw Error(`unsupported retro timing case: ${name}`);
 if(!['snes9x','bsnes','bsnes-accurate'].includes(coreName))throw Error(`unknown core: ${coreName}`);
 if(!Number.isInteger(repeat)||repeat<1||repeat>100)throw Error('--repeat must be 1..100');
@@ -52,7 +54,7 @@ try{
     missedVblanks:missed.length,advances,misses:missed.map(r=>r.frame),rows};
   writeFileSync(resolve(out,'timing.json'),JSON.stringify(result,null,2));
   await h.shot('end');
-  const fullParty=!['punch','walk','vegeta-intro'].includes(name);
+  const fullParty=!['punch','walk',...Object.keys(special)].includes(name);
   const valid=(!fullParty||party.every(x=>x===1))&&rows.length>0&&advances>0;
   const pass=valid&&(maxMisses<0||missed.length<=maxMisses);
   console.log(`${name} on ${coreName}: ${pass?'pass':'FAIL'}; missed field updates ${missed.length}/${rows.length}; party ${party.join('/')}; first ${missed.slice(0,24).map(r=>r.frame).join(',')}`);
