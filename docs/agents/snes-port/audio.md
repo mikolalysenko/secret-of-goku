@@ -579,6 +579,10 @@ four song changes:
 - The hole planner ends each overlap scan at the first slot past the
   candidate, and packing walks the slots in order. Neither changes a
   decision.
+- The Vegeta arrangements (`$3E/$3F`) explicitly use the non-moving allocator
+  on their first visit too. This avoids compacting the live native working set
+  during the trial intro: `combat-final` intro misses fall from 28 to 25 and
+  transformation lag from 25 to 11, with no cue or loader-order change.
 
 | Stall frames | Round seven | Round eight | Now |
 | --- | ---: | ---: | ---: |

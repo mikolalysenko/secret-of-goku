@@ -6,6 +6,10 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Use the non-moving audio cache policy explicitly for Vegeta's `$3E/$3F`
+  arrangements on their first visit, without moving the cue or changing loader
+  order. Intro misses fall from 28 to 25 and transformation lag from 25 to 11;
+  the complete audio and Vegeta suites pass with identical replay ticks.
 - Unroll the native 512-byte `$FE00-$FFFF` clear with exact WRAM and exit-state
   differentials over all flags, DP/DB variants and stack edges. Cost falls from
   3,881 to 1,336 cycles; Hydra's five-phase total improves from 10 to 9 misses,

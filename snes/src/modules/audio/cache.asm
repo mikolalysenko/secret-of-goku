@@ -51,9 +51,15 @@ audio_cache_plan:
 	INX : INX : CPX.w #$0020 : BNE .retain
 	JSR audio_cache_sort
 	JSR audio_cache_history
-	BEQ +
+	BNE .nonmoving
+	; Vegeta's arrangements use the non-moving policy even on their first
+	; visit: do not compact a live native working set behind the intro.
+	LDA $05 : AND.w #$00FF
+	CMP.w #$003E : BEQ .nonmoving
+	CMP.w #$003F : BEQ .nonmoving
+	JMP audio_cache_append
+.nonmoving
 	JMP audio_cache_allocate
-+	JMP audio_cache_append
 
 ; The last four song changes (id + 1; zero is empty, as in cleared WRAM) and
 ; a three-load window after a return. Song loads only: no frame work.

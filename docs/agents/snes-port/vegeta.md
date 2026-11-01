@@ -391,5 +391,9 @@ buffering.
 `fight.lua` now records PPU sprite overflow, visible DMA, NMI overruns and
 true missed field-loop completions separately from intentional hit-stop.
 The full `combat-final` replay remains exact, with no missed logic in battle,
-transformation or clash; its 28 remaining misses are in the intro. The
+transformation or clash. Its 25 remaining misses are in the intro's first
+synchronous `$3E` load (down from 28): the Vegeta-family cache now uses the
+non-moving allocator on its first visit, avoiding compaction of the live native
+working set and reducing transformation lag from 25 to 11. The complete audio
+and Vegeta suites pass; cue order and the loader sequence are unchanged. The
 profiler's completion address is the actual FastROM `$80:B077` continuation.
