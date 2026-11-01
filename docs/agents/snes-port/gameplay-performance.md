@@ -2026,3 +2026,8 @@ preserves the high quotient/remainder words, consumed inputs, return state,
 zero result and all fallbacks. The sample cost is 2,363 -> 150 cycles; the
 Beast miss count is unchanged at 86/240, so these arithmetic routines are
 not the dominant remaining workload.
+
+C2:28C6 now reads each native color once instead of three times, with an
+unrolled 16-color path and the general loop for other counts. Full-state
+differentials cover six sizes, seven flag sets and six source/dest pairs.
+Cost falls 1,934 -> 1,826 cycles, with no change to the 86/240 Beast result.

@@ -6,6 +6,10 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Read native palette colors once per expansion and unroll the common
+  16-color call. All output planes, pointers, narrowed registers and flags
+  match; the call falls from 1,934 to 1,826 CPU cycles. The Beast timing
+  result remains 86/240, leaving its dominant workload open.
 - Reduce high-zero C2:2CE6 32/32 divisions to the hardware 16/8 path,
   retaining full software fallback for every other shape. The complete
   differential passes and 12345/80 falls from 2,363 to 150 CPU cycles.

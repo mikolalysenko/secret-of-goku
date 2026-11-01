@@ -1207,6 +1207,66 @@ core_native_div32:
 	ORA $50
 	JML $C22CEC
 
+; C2:28C6 expands native 15-bit colors into three planes. Hold each source
+; word in X instead of reading it three times; restore the retail narrowed
+; X and final CPY flags after the loop. M16/X16, DB=0.
+core_native_palette_expand:
+	PHX
+	LDY $C5
+	LDA $66
+	CMP.w #32
+	BEQ .unrolled
+	BRL .color
+.unrolled
+	for color = 0..16
+		LDA ($76),Y
+		TAX
+		TXA
+		AND.w #$7C00
+		LSR : LSR
+		STA ($79)
+		INC $79 : INC $79
+		TXA
+		AND.w #$03E0
+		ASL : ASL : ASL
+		STA ($79)
+		INC $79 : INC $79
+		TXA
+		AND.w #$001F
+		XBA
+		STA ($79)
+		INC $79 : INC $79
+		INY : INY
+	endfor
+	BRA .done
+.color
+	LDA ($76),Y
+	TAX
+	TXA
+	AND.w #$7C00
+	LSR : LSR
+	STA ($79)
+	INC $79 : INC $79
+	TXA
+	AND.w #$03E0
+	ASL : ASL : ASL
+	STA ($79)
+	INC $79 : INC $79
+	TXA
+	AND.w #$001F
+	XBA
+	STA ($79)
+	INC $79 : INC $79
+	INY : INY
+	CPY $66
+	BNE .color
+.done
+	PLX
+	CPY $66
+	SEP #$10
+	REP #$10
+	JML $C228F9
+
 ; C0:C148's two native JSRs. The tilemap routine is position independent;
 ; keep a byte-identical local copy to avoid its RTS bank bridge. The HUD
 ; routine uses bank $80's identical mapping and returns through B294's RTL.

@@ -183,6 +183,11 @@ if not(defined("CORE_NATIVE_DIV16_SLOW"))
 %hijack($C22CE6, core_native_div32, 4, core)
 endif
 
+if not(defined("CORE_NATIVE_PALETTE_SLOW"))
+%orig4($C228C6, $C5A410E2)
+%hijack($C228C6, core_native_palette_expand, 4, core)
+endif
+
 if not(defined("CORE_NATIVE_EMITTER_RELOAD_SLOW"))
 ; E6C1 already selected M8. Every accepted/rejected piece leaves Y equal
 ; to $7C (including the high-X table detour). Keep it across iterations.
