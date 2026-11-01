@@ -1947,8 +1947,10 @@ New controller-driven native boss cases run Hydra and Mech Rider with punches,
 ki, a full charge and Focus. Every gameplay case now asserts active Primm and
 Popoi, and their quick starts recruit them. Full-party normal combat remains
 zero-drop. Current full-party open misses are Mech Rider 21/240 plus 41 vblank
-overruns, Hydra 2/240 and Frieza orbit 2/660. Thanatos walking and fighting are
-zero-drop after the real arrival-song upload finishes during setup. The
+overruns and Hydra 2/240; the orbit's eight start phases are all zero-repeat
+after warming its native death-sheet source in the black load and bypassing the
+redundant native upload wait in the live, unpaused fight. Thanatos walking and
+fighting are zero-drop after the real arrival-song upload finishes during setup. The
 original `$3B` cold-import loader stall is kept out of that measurement window
 rather than assigned to combat. A direct Frieza path removes much of the module
 cost. The remaining boss measurements above are open work, not a zero-drop

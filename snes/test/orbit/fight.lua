@@ -107,4 +107,5 @@ function test()
   H.result('watch', watch)
   H.result('lagged', lagged)
   H.result('lagAt', lagAt)
+  if GLYPH_LOG then H.result('glyph', GLYPH_LOG) end
 end

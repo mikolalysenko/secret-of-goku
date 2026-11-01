@@ -226,6 +226,7 @@ orbit_scene_init:
 	STA.l !orbit_lfound
 	STA.l !orbit_mt
 	STA.l !orbit_frame
+	STA.l !core_orbit_glyph
 	SEP #$20
 	STA.l !orbit_rstep
 	STA.l !orbit_mpic
@@ -1115,6 +1116,28 @@ orbit_nmi_load:
 	STA.w $2115
 	LDA.b #$80
 	STA.w $420B
+	; The next native damage number would otherwise copy these same 1,600
+	; bytes during a live frame. Warm slot 0's source-variant-0 sheet in this
+	; black load vblank; core_native_tiles checks the source before reusing it.
+	REP #$20
+	LDA.w #$2800
+	STA.w $2181
+	LDA.w #!XDATA_CORE_GFX_DEATH
+	STA.w $4372
+	LDA.w #$8000
+	STA.w $4370
+	LDA.w #1600
+	STA.w $4375
+	SEP #$20
+	LDA.b #$00
+	STA.w $2183
+	LDA.b #(!XDATA_CORE_GFX_DEATH)>>16
+	STA.w $4374
+	LDA.b #$80
+	STA.w $420B
+	REP #$20
+	LDA.w #1
+	STA.l !core_orbit_glyph
 	JMP .next
 .fxd
 	REP #$20

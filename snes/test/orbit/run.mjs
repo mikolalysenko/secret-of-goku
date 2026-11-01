@@ -19,6 +19,9 @@
 //          the distant bodies (the wave shatters the moon)
 //          (ORBIT_FIGHT_EXTRA=n: start n frames later, another phase of the
 //          game's own frame cycle)
+//   pose    Frieza's no-laser and all-16-heading pointer/facing poses
+//   glyph   both native damage reactions: warmed-cache hits and forced-copy
+//           fallback, with every output byte checked against expanded source
 //   scenery the fight under pads that shatter the distant bodies with ki
 //          (the planetoid, the moon, the outer planet), compared the same
 //          way: their places, the strikes, the impacts and their copies,
@@ -117,6 +120,13 @@ function watchPrelude(rom){
   return `GLOBE_PAL=${a('orbit_globe_pal')+2*2*96}\nOBJ01=${a('orbit_obj_pals_01')}\nOBJ01B=${a('orbit_obj_pals_01b')}\nOBJ67=${a('orbit_obj_pals_67')}\nTEXT_PAL=${a('orbit_text_pal')}\n`
     +`FRED=${a('orbit_pal_frieza_red')}\nFWHITE=${a('orbit_pal_frieza_white')}\nWASH=${a('orbit_wash')}\n${ow}`
     +readFileSync(join(here,'watch.lua'),'utf8')+'\n';
+}
+function glyphPrelude(rom){
+  const symbols=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
+  const addr=n=>{const m=symbols.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'mi'));if(!m)throw Error(`orbit glyph: no ${n}`);return parseInt(m[1]+m[2],16);};
+  const xd=readFileSync(resolve(repo,'dist/snes/gen/xdata.asm'),'utf8').match(/^!XDATA_CORE_GFX_DEATH = \$([0-9A-F]+)$/m);
+  if(!xd)throw Error('orbit glyph: no expanded death source');
+  return `GLYPH_ENTRY=${addr('core_native_tiles')}\nGLYPH_DMA=${addr('core_native_tiles_dma_setup')}\nGLYPH_MVN=${addr('core_native_tiles_mvn')}\nGLYPH_FINISH=${addr('core_native_tiles_finish')}\nGLYPH_SOURCE=0x${xd[1]}\n`+readFileSync(join(here,'glyph.lua'),'utf8')+'\n';
 }
 // The frames whose colours differ from the scene's (watch.lua W.cgram):
 // [frame, ranges] pairs.
@@ -380,7 +390,7 @@ end
 // same pads.
 async function fightCase(rom,name,frames,pads,shotList,maxLag=3,flickerBounds=null){
     const dir=join(out,name);
-    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${[...shotList,...extraShots()].join(',')}}\nDUMP=${process.env.ORBIT_DUMP?'true':'false'}\nEXTRA=${Number(process.env.ORBIT_FIGHT_EXTRA??0)}\n`;
+    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${[...shotList,...extraShots()].join(',')}}\nDUMP=${process.env.ORBIT_DUMP?'true':'false'}\nEXTRA=${Number(process.env.ORBIT_FIGHT_EXTRA??0)}\n${name==='glyph'||name==='glyph-fallback'?glyphPrelude(rom):''}\nGLYPH_FORCE_COPY=${name==='glyph-fallback'?1:0}\n`;
     const r=await runMesen({rom,state,test:ADDR+pre+watchPrelude(rom)+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT,exactFrames:!!process.env.ORBIT_SHOTS});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
@@ -412,10 +422,16 @@ async function fightCase(rom,name,frames,pads,shotList,maxLag=3,flickerBounds=nu
       const d=diff(c,want);
       if(d.length)mismatches.push(`age ${c.boss.age}: ${d.slice(0,4).join('; ')}`);
     }
+    if(name==='glyph'||name==='glyph-fallback'){
+      const hits=res.glyph??[],wantCopy=name==='glyph-fallback';
+      if(hits.length!==2)mismatches.push(`glyph reactions: ${hits.length} (want 2)`);
+      for(const h of hits)if(h.copied!==wantCopy||h.bad||h.key!==1)mismatches.push(`glyph frame ${h.frame}: copied ${h.copied}, ${h.bad} bad bytes, key ${h.key}`);
+    }
     // every frame: the colours the orbit owns as the scene sends them
     const colours=badColours(res.watch),{late,dropped,writes}=watchFindings(res.watch),bodies=bodyFindings(res.watch),flicker=flickerFindings(res.watch);
     const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,hpTrail:trail,colours,late,dropped,writes,bodies,flicker,watch:res.watch,
       end:{cart:cart.at(-1),browser:ref[cart.at(-1).boss.age-1]?refState(ref[cart.at(-1).boss.age-1]):null}};
+    if(name==='glyph'||name==='glyph-fallback')report.glyphs=res.glyph??[];
     writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
     // The fight steps once per field vblank (catching up after a slow game
     // frame, as the browser's clock does); a few pictures may still repeat
@@ -537,6 +553,12 @@ const cases={
     console.log(`pose: ${ok?'pass':'FAIL'} no laser + all 16 headings`);
     for(const f of fails)console.log('  '+f);
     return ok;
+  },
+  async glyph(rom){
+    return fightCase(rom,'glyph',660,fightPads(660),[0,60,150,200,240,320,600],0,{jumps:12,prot:8,burst:40,hides:[0,0,1],short:0});
+  },
+  async ['glyph-fallback'](rom){
+    return fightCase(rom,'glyph-fallback',660,fightPads(660),[0,60,150,200,240,320,600],12,{jumps:12,prot:8,burst:40,hides:[0,0,1],short:0});
   },
   async fight(rom){
     const frames=Number(process.env.ORBIT_FIGHT_FRAMES??660);

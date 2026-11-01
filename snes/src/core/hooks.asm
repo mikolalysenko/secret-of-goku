@@ -365,6 +365,13 @@ if not(defined("CORE_NATIVE_TILES_SLOW"))
 %hijack($C1C599, core_native_tiles, 5, core)
 endif
 
+; The orbit fight hides native actors and their cell uploads, so it does not
+; need the damage reaction's mid-frame upload wait. Other scenes retain it.
+%orig4($C1E0F9, $02A920E2)           ; SEP #$20 / LDA #$02
+%orig4($C1E0FD, $EC24EC85)           ; STA $EC / BIT $EC
+%orig3($C1E101, $60FCD0)             ; BNE $E0F9
+%hijack($C1E0F9, core_orbit_native_wait, 10, core)
+
 ; The native FE00 work-buffer clear keeps its exact writes and exit state.
 %orig4($C05D60, $E800009D)
 %orig4($C05D64, $F8D088E8)

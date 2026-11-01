@@ -112,6 +112,8 @@
 !CORE_BRIGHT_ENDING   = $02        ; the ending's black holds (!ending_showbright)
 !core_actor_hold      = !SRAM_WORK_ACTOR_HOLD ; word: a module whose picture hides every native
 !core_ending_gokuctl  = !RAM_ORBIT+$9E ; ending's full-screen Goku suppression (ending_gokuctl)
+!core_orbit_glyph     = !RAM_ORBIT+$7E ; word: orbit's resident slot-0 death sheet source variant + 1
+!core_orbit_fight_on  = !SRAM_WORK_SCENE+$A80+$226 ; orbit fight owns and hides every native actor
                                     ; actor writes !core_frame here in its frame code: that
                                     ; frame's vblank skips the game's actor cells (core_actor_cells)
 !core_oam_first       = !CORE_SAFE+$017 ; byte: $80 | first field OBJ, or 0 for normal order

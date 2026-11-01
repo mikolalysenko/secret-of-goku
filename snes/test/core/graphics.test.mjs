@@ -52,6 +52,7 @@ function runner(rom){
   });
   return ({slot=0,p=0,dp=0,db=0x7E,bank=0xD1,source=0xF100,count=50,dest=0x0800,actor=slot*512,dmaLine,gate={},hdmaen=0,species,status,weaponShown,keepRam=false}={})=>{
     if(!keepRam)for(let i=0;i<ram.length;i++)ram[i]=(i*71+(i>>8)*17)&255;
+    ram[0xDC00]=0; // ordinary native graphics: no orbit scene owns the cache
     for(let i=0;i<sram.length;i++)sram[i]=(i*53+11)&255;
     sram[sramAt(HDMAEN)]=hdmaen;
     for(let i=0;i<io.length;i++)io[i]=(i*37+9)&255;

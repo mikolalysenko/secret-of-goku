@@ -1148,6 +1148,35 @@ core_native_dma_window:
 	CLC
 	RTS
 
+; C1:E0F9's mid-frame upload wait is redundant while the orbit fight owns
+; the picture: its frame hides every native actor and holds native cell DMA.
+; Bypass only that live, unpaused scene, with no pending command or return.
+; The ordinary path retains the original store and BIT/BNE wait. M8 in/out, A=2.
+core_orbit_native_wait:
+	SEP #$20
+	LDA.l !RAM_ORBIT
+	CMP.b #$02                       ; OS_LIVE
+	BNE .native
+	LDA.l !RAM_ORBIT+$27             ; no return in progress
+	BNE .native
+	LDA.l !RAM_ORBIT+$01             ; no pending scene command
+	BNE .native
+	LDA.l !core_orbit_fight_on
+	BEQ .native
+	LDA $D0                          ; native dialogue/event owns the field
+	BNE .native
+	LDA $EC
+	AND.b #$FE                       ; ring/menu or another native upload
+	BNE .native
+	LDA.b #$02
+	JML $81E103                     ; original RTS, restoring the caller's bank
+.native
+	LDA.b #$02
+	STA.b $EC
+-	BIT.b $EC
+	BNE -
+	JML $81E103
+
 ; C1:C599: common death and weapon sheets. All three retail
 ; colour encodings were expanded at build time. Copy into the original
 ; buffer with an early-field DMA or interruptible word copy, preserving the
@@ -1184,7 +1213,14 @@ assert ((<data>&$FFFF)+(<tiles>*32*3)) <= $10000, "native graphics variants cros
 	BNE .native
 	BRA .fast
 .native
-	PLA
+	LDA.l !RAM_ORBIT
+	AND.w #$00FF
+	BEQ +
+	CPX.w #$0000
+	BNE +
+	LDA.w #$0000
+	STA.l !core_orbit_glyph
++	PLA
 	PLP
 	JML <next>
 .fast
@@ -1211,6 +1247,17 @@ assert ((<data>&$FFFF)+(<tiles>*32*3)) <= $10000, "native graphics variants cros
 	CLC
 	ADC.w #$2000
 	TAY                          ; actual WRAM destination
+if <bank> != $D1 || <source> != $F100
+	; A different slot-0 sheet supersedes the orbit's warmed death sheet.
+	LDA.l !RAM_ORBIT
+	AND.w #$00FF
+	BEQ +
+	LDA $02
+	BNE +
+	LDA.w #$0000
+	STA.l !core_orbit_glyph
++
+endif
 if <bank> == $D4 && <source> == $0000
 if not(defined("CORE_NATIVE_DEATH_WEAPON_SLOW"))
 	; The ordinary F9 death animation uses only its body sheet. Native
@@ -1240,6 +1287,28 @@ endif
 	TAX
 	LDA.l .source,X
 	TAX
+if <bank> == $D1 && <source> == $F100
+	; The orbit warms source variant 0 in its black load. Native colour
+	; variants 0/3/6/... select that same expanded source, so compare X with
+	; the actual source rather than the colour variant number.
+	LDA $02
+	BNE .cache_copy
+	LDA.l !RAM_ORBIT
+	AND.w #$00FF
+	BEQ .cache_copy
+	CPX.w #(!XDATA_CORE_GFX_DEATH&$FFFF)
+	BNE .cache_other
+	LDA.l !core_orbit_glyph
+	CMP.w #$0001
+	BEQ .copied
+	LDA.w #$0001
+	STA.l !core_orbit_glyph
+	BRA .cache_copy
+.cache_other
+	LDA.w #$0000
+	STA.l !core_orbit_glyph
+.cache_copy
+endif
 	JSR core_native_dma_window
 	BCC .mvn
 .dma_setup

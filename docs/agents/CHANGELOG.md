@@ -23,9 +23,14 @@ stay traceable even when they are committed together.
 - Reuse the orbit beam selector's young-laser class and direction for Frieza's
   pointer pose instead of rescanning all 12 shots. Handle the `$FFFF` off
   sentinel and vertical class explicitly. A new `pose` case covers no-laser and
-  all 16 headings; every fight start phase, scenery, clash and return pass. The
-  typical scan saves about 1.45 scanlines, while the two damage-reaction
-  repeats remain unchanged.
+  all 16 headings; every fight start phase, scenery, clash and return pass.
+- Warm the orbit's native source-variant-0 death sheet during its black band
+  load and skip the native mid-frame upload wait only in the live, unpaused
+  fight. Cache checks use the actual expanded source, not the colour variant.
+  New `glyph`/`glyph-fallback` cases verify cache hits and forced copies with
+  all 1,600 bytes exact. All eight orbit phases now have zero repeats and zero
+  state mismatches; intentional burst-only PPU overflow is 162 versus 153
+  sliver-lines, with no OAM entries removed or protagonist/beam sliver loss.
 
 ## SNES native rendering and combat performance checkpoint (2026-10-30)
 

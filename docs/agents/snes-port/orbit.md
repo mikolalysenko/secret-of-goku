@@ -522,9 +522,22 @@ The current Frieza draw reuses the young laser already selected by
 12 boss shots again in `fd_frieza`. The `beam_off` `$FFFF` sentinel is checked
 before `BK_LASER`; class 4 keeps vertical lasers unflipped. The `pose` case
 verifies no-laser rendering and every one of the 16 headings. This saves about
-1.45 scanlines on an ordinary shot-scan frame, but does not remove the two
+1.45 scanlines on an ordinary shot-scan frame; by itself it leaves the two
 native damage-reaction repeats at 248 and 524. All eight fight start phases,
 scenery, clash and return retain their state and OAM behavior.
+
+The black band load also warms slot 0's source-variant-0 native death sheet in
+`7E:2800`. `core_native_tiles` compares the actual expanded source, so colour
+variants 0/3/6/... correctly share that cache; other sheets and slots invalidate
+it. During the live, unpaused orbit fight only, `core_orbit_native_wait` skips
+the native mid-frame upload wait because the scene already hides native actors
+and holds their cell DMA. Menus, dialogue, pending commands, returns and all
+ordinary scenes retain the wait. `glyph` proves both reactions hit the cache
+with all 1,600 bytes exact; `glyph-fallback` forces full copies and checks the
+same bytes. Every start phase now has zero repeated pictures and zero state
+mismatches. The corrected timeline reaches one crowded burst age: intentional
+burst-only PPU overflow is 162 sliver-lines rather than 153, with no OAM entries
+removed and no Goku/Frieza/beam/body sliver loss.
 
 Sprite lines (`scline.asm`, the third code area): a body is 4 slivers on
 each of its lines (the small planetoid 2), and the stars' row limits
