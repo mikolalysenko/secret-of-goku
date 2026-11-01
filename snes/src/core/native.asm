@@ -1213,9 +1213,34 @@ core_native_palette_expand:
 	PHX
 	LDY $C5
 	LDA $66
+	CMP.w #16
+	BEQ .unrolled8
 	CMP.w #32
-	BEQ .unrolled
+	BEQ +
 	BRL .color
++	BRL .unrolled
+.unrolled8
+	for color = 0..8
+		LDA ($76),Y
+		TAX
+		TXA
+		AND.w #$7C00
+		LSR : LSR
+		STA ($79)
+		INC $79 : INC $79
+		TXA
+		AND.w #$03E0
+		ASL : ASL : ASL
+		STA ($79)
+		INC $79 : INC $79
+		TXA
+		AND.w #$001F
+		XBA
+		STA ($79)
+		INC $79 : INC $79
+		INY : INY
+	endfor
+	BRL .done
 .unrolled
 	for color = 0..16
 		LDA ($76),Y

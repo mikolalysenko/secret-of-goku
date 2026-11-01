@@ -2035,3 +2035,6 @@ Cost falls 1,934 -> 1,826 cycles, with no change to the 86/240 Beast result.
 The mounted renderer also stores its transformed attribute directly from A,
 without reloading the same scratch word. All 4,000 differential cases match;
 the visible average falls to 247 cycles.
+
+The same palette routine now also unrolls the Beast's common 8-color size.
+All count, flag and pointer differentials remain exact.
