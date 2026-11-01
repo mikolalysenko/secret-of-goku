@@ -6,6 +6,9 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Reduce high-zero C2:2CE6 32/32 divisions to the hardware 16/8 path,
+  retaining full software fallback for every other shape. The complete
+  differential passes and 12345/80 falls from 2,363 to 150 CPU cycles.
 - Use the SNES hardware divider for C2:2CBF's byte divisors, preserving the
   software fallback for large divisors, zero and decimal mode. Quotient,
   remainder, consumed scratch and return state match; 12345/80 costs 116

@@ -1158,6 +1158,55 @@ core_native_div16:
 	LDA $4E
 	JML $C22CC3
 
+; C2:2CE6's 32/32 division reduces to the same hardware 16/8 operation
+; when both high words are zero and the divisor is a byte. The full software
+; path handles every other shape. Outputs are quotient $58:$56, remainder
+; $60:$5E, with consumed dividend/high words and return state preserved.
+core_native_div32:
+	PHP
+	LDA $01,S
+	BIT.w #$0008
+	BNE .native
+	LDA $4E
+	ORA $50
+	BEQ .zero
+	LDA $50
+	ORA $48
+	BNE .native
+	LDA $4E
+	AND.w #$FF00
+	BNE .native
+	PLP
+	LDA $46
+	STA.l $004204
+	STZ $46
+	STZ $48
+	SEP #$20
+	LDA $4E
+	STA.l $004206
+	REP #$20
+	NOP : NOP : NOP : NOP : NOP : NOP : NOP
+	LDA.l $004214
+	STA $56
+	STZ $58
+	LDA.l $004216
+	STA $5E
+	STZ $60
+	SEP #$10
+	LDX.b #0
+	REP #$10
+	LDA $C5
+	JML $C22D27
+.zero
+	PLP
+	LDA.w #$FFFF
+	JML $C22D2D
+.native
+	PLP
+	LDA $4E
+	ORA $50
+	JML $C22CEC
+
 ; C0:C148's two native JSRs. The tilemap routine is position independent;
 ; keep a byte-identical local copy to avoid its RTS bank bridge. The HUD
 ; routine uses bank $80's identical mapping and returns through B294's RTL.

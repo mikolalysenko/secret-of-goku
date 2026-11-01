@@ -179,6 +179,8 @@ endif
 if not(defined("CORE_NATIVE_DIV16_SLOW"))
 %orig4($C22CBF, $1FF04EA5)
 %hijack($C22CBF, core_native_div16, 4, core)
+%orig4($C22CE6, $50054EA5)
+%hijack($C22CE6, core_native_div32, 4, core)
 endif
 
 if not(defined("CORE_NATIVE_EMITTER_RELOAD_SLOW"))

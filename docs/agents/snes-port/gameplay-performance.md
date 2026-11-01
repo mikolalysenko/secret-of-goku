@@ -2019,3 +2019,10 @@ remainder, consumed `$46`, zeroed X and narrowed Y as well as the early-zero
 result. All 77 byte-divisor cases, 15 large/zero cases and 21 flag/DP variants
 match; 12345/80 falls 559 -> 116 cycles. The real Beast run is 86/240 after
 both optimizations, so the largest remaining stall still needs profiling.
+
+The corresponding 32/32 routine at C2:2CE6 also reduces to hardware 16/8
+when both high words are zero and the divisor is a byte. Its guarded path
+preserves the high quotient/remainder words, consumed inputs, return state,
+zero result and all fallbacks. The sample cost is 2,363 -> 150 cycles; the
+Beast miss count is unchanged at 86/240, so these arithmetic routines are
+not the dominant remaining workload.
