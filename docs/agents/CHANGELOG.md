@@ -6,6 +6,9 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Add Vegeta's real-input intro to the libretro timing harness, including
+  native dialogue advancement. The current ROM completes its 1,500-frame
+  run with zero missed field updates on bsnes.
 - Unroll the native 8-color palette expansion used by the Beast in addition
   to the 16-color path, preserving the complete differential.
 - Drop the mounted renderer's redundant attribute scratch reload. The

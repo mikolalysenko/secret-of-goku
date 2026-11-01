@@ -2038,3 +2038,7 @@ the visible average falls to 247 cycles.
 
 The same palette routine now also unrolls the Beast's common 8-color size.
 All count, flag and pointer differentials remain exact.
+
+`retro-timing.mjs --case=vegeta-intro` now drives the trial and advances its
+native dialogue. The current ROM has zero missed field updates over 1,500
+frames on bsnes.
