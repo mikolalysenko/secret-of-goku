@@ -915,6 +915,120 @@ core_native_nmi_fast:
 	TCD
 	JML $80C0B3
 
+; C2:206D/2081, M16/X16, DB=$7E, D=$0200. Mounted actor pieces call X,
+; Y and attribute helpers in sequence. Keep their exact operations inline:
+; this removes three JSR/RTS pairs per visible piece while retaining every
+; scratch byte, final register and carry result of the retail routines.
+macro core_special_piece(name, alternate)
+<name>:
+	LDA $95
+	ASL : ASL
+	TAX
+	LDA ($79)
+	AND.w #$00FF
+	BIT.w #$0080
+	BEQ +
+	ORA.w #$FF00
++	CLC
+	ADC $8F
+	STA $97
+	CLC
+	ADC.w #$0020
+	BPL +
+	JMP .offX
++	SEC
+	SBC.w #$0120
+	BMI +
+	JMP .offX
++	LDA $97
+	STA $0800,X
+	STA $99
+	LDA ($79)
+	AND.w #$FF00
+	BPL +
+	ORA.w #$00FF
++	XBA
+	CLC
+	ADC $91
+	STA $97
+	CLC
+	ADC.w #$0020
+	BMI .offY
+	SEC
+	SBC.w #$0100
+	BPL .offY
+	LDA $97
+	STA $0801,X
+	LDY.w #$0002
+	LDA ($79),Y
+	STA $9B
+if <alternate> == 0
+	ORA.w #$2000
+else
+	AND.w #$DFFF
+endif
+	STA $97
+	LDA $97
+	STA $0802,X
+	SEP #$30
+	LDA $95
+	AND.b #$03
+	TAX
+	LDA.l $C221B3,X
+	TAY
+	LDA $95
+	LSR : LSR
+	TAX
+	TYA
+	AND $0A00,X
+	STA $0A00,X
+	LDA $9A
+	ASL
+	BCC .noHighX
+	LDA $95
+	AND.b #$03
+	TAX
+	LDA.l $D97F2D,X
+	TAY
+	LDA $95
+	LSR : LSR
+	TAX
+	TYA
+	ORA $0A00,X
+	STA $0A00,X
+.noHighX
+	LDA $9C
+	BIT.b #$20
+	BEQ .noLarge
+	LDA $95
+	AND.b #$03
+	TAX
+	LDA.l $D97F31,X
+	TAY
+	LDA $95
+	LSR : LSR
+	TAX
+	TYA
+	ORA $0A00,X
+	STA $0A00,X
+.noLarge
+	REP #$30
+	CLC
+	JML $C220BB
+.offY
+	LDA.w #$00E0
+	STA $0801,X
+	DEC $85
+	SEC
+	JML $C220BB
+.offX
+	DEC $85
+	SEC
+	JML $C220BB
+endmacro
+%core_special_piece(core_native_special_piece, 0)
+%core_special_piece(core_native_special_piece_alt, 1)
+
 ; C0:C148's two native JSRs. The tilemap routine is position independent;
 ; keep a byte-identical local copy to avoid its RTS bank bridge. The HUD
 ; routine uses bank $80's identical mapping and returns through B294's RTL.

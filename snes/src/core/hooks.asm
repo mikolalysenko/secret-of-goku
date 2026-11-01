@@ -162,6 +162,15 @@ if not(defined("CORE_NATIVE_SPRITES_SLOW"))
 %hijack($C0E60D, core_native_body_anchor, 4, core)
 endif
 
+; Mounted/multi-part actors use C2's separate three-helper piece emitter.
+; Inline those calls without changing their clipping, OAM or scratch contract.
+if not(defined("CORE_NATIVE_SPECIAL_SLOW"))
+%orig4($C2206D, $0A0A95A5)
+%hijack($C2206D, core_native_special_piece, 4, core)
+%orig4($C22081, $0A0A95A5)
+%hijack($C22081, core_native_special_piece_alt, 4, core)
+endif
+
 if not(defined("CORE_NATIVE_EMITTER_RELOAD_SLOW"))
 ; E6C1 already selected M8. Every accepted/rejected piece leaves Y equal
 ; to $7C (including the high-X table detour). Keep it across iterations.

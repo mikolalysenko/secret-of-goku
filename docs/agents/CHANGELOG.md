@@ -6,6 +6,11 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Inline the mounted/multi-part actor renderer's X, Y and attribute helper
+  calls, with C2's original RTS preserving the caller's bank. A 4,000-case
+  retail differential covers both attribute modes, clipping, high bits,
+  decimal mode, registers and live RAM; visible pieces average 287 -> 253
+  CPU cycles.
 - Continue the field NMI from its identical bank-$80 FastROM mirror after
   the retail prologue, retaining the original upload order, hooks and RTI.
   An assembled prologue regression covers register, flag and stack state;

@@ -1973,3 +1973,11 @@ fixed an unrelated exactness failure in the optimized charge orb: a full
 draw list must preserve the incoming overflow flag, as the retail partial
 multiply did. All 9,981 charge/FX state comparisons and the complete OAM
 capacity/high-bit matrix pass.
+
+The mounted actors' separate C2 piece emitter now inlines its three helper
+calls. Every exit goes through C2's original RTS, so the bank and stack stay
+identical. `special-sprites.test.mjs` compares both attribute modes over
+4,000 visible/clipped cases, including decimal mode, partial OAM writes,
+packed high bits, scratch, final registers and flags. Across the 90 visible
+cases, the routines average 287 -> 253 CPU cycles. All 22 scene presets also
+complete on Snes9x, bsnes and bsnes-accurate.
