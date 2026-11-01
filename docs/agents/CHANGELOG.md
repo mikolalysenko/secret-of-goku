@@ -6,10 +6,6 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
-- Replace the two constant-×128 terrain projection calls with exact
-  seven-bit scaling instead of a hardware multiply. All 256 inputs and
-  flag/DP variants preserve RAM, registers and flags at both call sites;
-  each call falls from 58 to 37 CPU cycles.
 - Reuse the mounted renderer's group/bit indices across its large and
   high-X OAM masks, with exact final register restoration. The visible
   differential average falls a further 253 -> 251 CPU cycles.

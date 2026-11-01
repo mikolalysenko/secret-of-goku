@@ -171,17 +171,6 @@ if not(defined("CORE_NATIVE_SPECIAL_SLOW"))
 %hijack($C22081, core_native_special_piece_alt, 4, core)
 endif
 
-; C2:1690/16C3 multiply DP $46 by the constant $80 just stored at $4E.
-; Replace those two complete calls; C2:2AA6 keeps every other caller.
-if not(defined("CORE_NATIVE_MUL128_SLOW"))
-%orig4($C21690, $A62020E2)
-%orig3($C21694, $20C22A)
-%hijack($C21690, core_native_mul128_a, 7, core)
-%orig4($C216C3, $A62020E2)
-%orig3($C216C7, $20C22A)
-%hijack($C216C3, core_native_mul128_b, 7, core)
-endif
-
 if not(defined("CORE_NATIVE_EMITTER_RELOAD_SLOW"))
 ; E6C1 already selected M8. Every accepted/rejected piece leaves Y equal
 ; to $7C (including the high-X table detour). Keep it across iterations.
