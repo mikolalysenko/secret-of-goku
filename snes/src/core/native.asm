@@ -1050,6 +1050,114 @@ endmacro
 %core_special_piece(core_native_special_piece, 0)
 %core_special_piece(core_native_special_piece_alt, 1)
 
+; C2:1D7A's C1:5D22 stream: six rows of twelve bytes, 72 total. Other
+; sources and shapes retain the retail bitstream decoder. The copy retains
+; the retail final source/dest pointers, scratch, registers and flags.
+core_native_lz_beast:
+	PHA
+	LDA $76
+	CMP.w #$5D22
+	BNE .native
+	LDA $78
+	AND.w #$00FF
+	CMP.w #$00C1
+	BNE .native
+	LDA $72
+	CMP.w #12
+	BNE .native
+	LDA $74
+	CMP.w #72
+	BNE .native
+	SEP #$30
+	LDX.b #0
+	LDY.b #0
+.cell
+	LDA.l core_lz_beast_data,X
+	STA [$7C],Y
+	INX
+	INY
+	CPY.b #12
+	BCC .cell
+	CPX.b #72
+	BEQ .copied
+	LDY.b #0
+	LDA $7C
+	CLC
+	ADC.b #$40
+	STA $7C
+	LDA $7D
+	ADC.b #$00
+	STA $7D
+	BRA .cell
+.copied
+	LDA.b #$60
+	STA $76
+	LDA.b #$5D
+	STA $77
+	LDA.b #$C1
+	STA $78
+	STZ $74
+	STZ $75
+	STZ $95
+	STZ $96
+	STZ $97
+	LDA.b #$01
+	STA $98
+	LDX.b #0
+	LDY.b #11
+	CLC
+	REP #$20
+	PLA
+	AND.w #$FF00
+	SEP #$20
+	LDA.b #$00
+	REP #$20
+	JML $C21DB2
+.native
+	PLA
+	STZ $95
+	SEP #$30
+	JML $C21D7E
+
+; C2:2CBF, M16/X16, DB=0. A byte divisor uses the hardware divider for
+; the same quotient at $56 and remainder at $5E. Large divisors and decimal
+; mode retain the 16-step software routine; zero keeps its $FFFF result.
+core_native_div16:
+	PHP
+	LDA $01,S
+	BIT.w #$0008
+	BNE .native
+	LDA $4E
+	BEQ .zero
+	AND.w #$FF00
+	BNE .native
+	PLP
+	LDA $46
+	STA.l $004204
+	STZ $46
+	SEP #$20
+	LDA $4E
+	STA.l $004206
+	REP #$20
+	NOP : NOP : NOP : NOP : NOP : NOP : NOP
+	LDA.l $004214
+	STA $56
+	LDA.l $004216
+	STA $5E
+	SEP #$10
+	LDX.b #0
+	REP #$10
+	LDA $C5
+	JML $C22CE1
+.zero
+	PLP
+	LDA.w #$FFFF
+	JML $C22CE5
+.native
+	PLP
+	LDA $4E
+	JML $C22CC3
+
 ; C0:C148's two native JSRs. The tilemap routine is position independent;
 ; keep a byte-identical local copy to avoid its RTS bank bridge. The HUD
 ; routine uses bank $80's identical mapping and returns through B294's RTL.
@@ -1123,6 +1231,7 @@ core_native_hp_nmi:
 	RTS
 
 incsrc "core-graphics/data.asm"
+incsrc "core-lz/data.asm"
 
 ; Native body/weapon anchor and pieces: add packed coordinates for interior
 ; assemblies. Direct emitter calls (including small shadows) are unchanged.

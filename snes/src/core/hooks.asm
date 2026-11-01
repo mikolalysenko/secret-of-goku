@@ -171,6 +171,16 @@ if not(defined("CORE_NATIVE_SPECIAL_SLOW"))
 %hijack($C22081, core_native_special_piece_alt, 4, core)
 endif
 
+if not(defined("CORE_LZ_BEAST_SLOW"))
+%orig4($C21D7A, $30E29564)
+%hijack($C21D7A, core_native_lz_beast, 4, core)
+endif
+
+if not(defined("CORE_NATIVE_DIV16_SLOW"))
+%orig4($C22CBF, $1FF04EA5)
+%hijack($C22CBF, core_native_div16, 4, core)
+endif
+
 if not(defined("CORE_NATIVE_EMITTER_RELOAD_SLOW"))
 ; E6C1 already selected M8. Every accepted/rejected piece leaves Y equal
 ; to $7C (including the high-X table detour). Keep it across iterations.

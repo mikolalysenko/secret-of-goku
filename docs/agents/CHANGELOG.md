@@ -6,6 +6,15 @@ stay traceable even when they are committed together.
 
 ## SNES native combat timing checkpoint (2026-11-01)
 
+- Use the SNES hardware divider for C2:2CBF's byte divisors, preserving the
+  software fallback for large divisors, zero and decimal mode. Quotient,
+  remainder, consumed scratch and return state match; 12345/80 costs 116
+  versus 559 CPU cycles. Together with the predecoded stream, the full-party
+  bsnes Beast fight improves from 88 to 86 misses out of 240.
+- Predecode the native `C1:5D22` graphics stream used by Mana Beast. The
+  exact 72-byte/six-row replacement preserves output, both pointers,
+  scratch, registers and flags, and costs 1,698 versus 4,953 CPU cycles.
+  Other streams retain the decoder. The next bottleneck is elsewhere.
 - Add real-input libretro field-update timing for Mech Rider, Hydra, Mana
   Beast, Thanatos, normal combat and walking. The harness uses the ROM's
   completed-frame counter, records every miss and supports an optional

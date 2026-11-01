@@ -2003,3 +2003,19 @@ measured 18/240 misses at `60b0d5d`, 15 after the mounted-sprite work, 39
 with the experimental constant-×128 shortcut, and 15 again after reverting
 it. The isolated ×128 differential passed, so the real-input regression is
 the reason that optimization was removed rather than retained.
+
+The Beast's repeated `C1:5D22` stream is now decoded at build time. Its
+runtime replacement copies the same six 12-byte rows and reproduces the
+retail final source/destination pointers, history/counter scratch, A/X/Y
+and flags. `native-lz.test.mjs` checks all 21 destination/flag combinations
+and a fallback shape. Cost falls 4,953 -> 1,698 cycles, but the real bsnes
+fight stays at 88/240 misses: this decoder was not the remaining critical
+path.
+
+C2:2CBF's 16-step divider now uses the SNES hardware divider when its
+divisor is a nonzero byte and decimal mode is off. Other divisors and decimal
+mode retain the software loop. The replacement reproduces the quotient,
+remainder, consumed `$46`, zeroed X and narrowed Y as well as the early-zero
+result. All 77 byte-divisor cases, 15 large/zero cases and 21 flag/DP variants
+match; 12345/80 falls 559 -> 116 cycles. The real Beast run is 86/240 after
+both optimizations, so the largest remaining stall still needs profiling.
