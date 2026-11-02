@@ -115,6 +115,12 @@ audio_cache_append:
 	LDA $1B : CLC : ADC $17 : BCS .pack
 	CMP $F1 : BCC .append
 .pack
+	; A resumable load never leaves the allocator's call tree suspended.
+	; Compact as a separate state, then re-enter this policy from its start.
+	LDA.l !au_load_fast : AND.w #$0002 : BEQ .sync_pack
+	STZ.w !au_sl_aux : STZ.w !au_sl_need
+	LDA.w #$0001 : RTS
+.sync_pack
 	STZ $17                     ; pack the whole required set once
 	JSR audio_cache_compact
 	JSR audio_cache_sort
@@ -245,6 +251,11 @@ audio_cache_allocate:
 	BRL .candidate
 .chosen
 	LDA $1F : CMP.w #$FFFF : BNE .found
+	LDA.l !au_load_fast : AND.w #$0002 : BEQ .sync_compact
+	LDA.w #$0001 : STA.w !au_sl_aux
+	LDA $17 : STA.w !au_sl_need
+	LDA.w #$0001 : RTS
+.sync_compact
 	JSR audio_cache_compact
 	JSR audio_cache_sort
 	JMP audio_cache_allocate
@@ -348,6 +359,10 @@ audio_cache_compact:
 	RTS
 
 audio_cache_uploads:
+	; Async planners finish here; their owned-WRAM uploader resumes by slot.
+	LDA.l !au_load_fast : AND.w #$0002 : BEQ .synchronous
+	LDA.w #$0000 : RTS
+.synchronous
 	LDX.w #$0000
 .slot
 	LDA $8A,X : AND.w #$00FF : CMP.w #$0002 : BNE .next

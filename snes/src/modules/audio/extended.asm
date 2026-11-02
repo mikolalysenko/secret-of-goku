@@ -134,6 +134,8 @@ audio_extended_finish:
 	; Song $32 borrows the effect table for its long sequence.
 	LDA $F3 : AND.w #$00FF : BEQ .block
 .template
+audio_extended_finish_commit:
+	; Shared by synchronous loads and the resumable loader's final commit.
 	REP #$20
 	LDA.l !au_ext_next : STA.l !au_ext_start
 	LDA.w #$A8DB : STA.l !au_ext_valid

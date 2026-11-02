@@ -414,6 +414,7 @@ audio_native_effect:
 	JMP .native
 .async
 	SEP #$20
+	LDA.l !au_load_fast : BIT.b #2 : BEQ + : JMP .native : +
 	LDA.l $7E0000|!au_pending : BEQ .ready
 	CMP.l $002140 : BNE .busy
 	LDA.b #0 : STA.l $002140 : STA.l $7E0000|!au_pending
@@ -466,6 +467,7 @@ audio_native_effect:
 audio_native_command:
 audio_resident_command:
 	SEP #$20
+	LDA.l !au_load_fast : BIT.b #2 : BEQ + : JMP audio_songload_requeue : +
 	LDA.l $7E0000|!au_pending
 	BEQ .polled
 	CMP.l $002140

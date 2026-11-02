@@ -1,7 +1,7 @@
 ; Main-thread-only acceleration of the native song loader. D=$1E00, DB=0,
 ; A8/X16 on entry. The native cache, echo policy and instrument tables stay
-; in charge. No frame hook, DMA, new WRAM, or persistent ARAM allocation.
-!au_load_fast #= $7E0000+!au_tmp+$16 ; song-load-only scratch, never a frame flag
+; in charge. No DMA, new WRAM, or persistent ARAM allocation.
+; au_load_fast bit0 selects the fast receiver; bit1 owns an active async load.
 
 audio_songload_install:
 if !AUDIO_CUSTOM_SAMPLES

@@ -10,6 +10,9 @@ local function mark(nextStage)
   stage=nextStage;stamp=t
 end
 function AUDIO_PROFILE_INIT()
+  if AUDIO_RESUME_ACCEPT and AUDIO_RESUME_ACCEPT~=0 then
+    emu.addMemoryCallback(beginLoadRow,emu.callbackType.exec,AUDIO_RESUME_ACCEPT,AUDIO_RESUME_ACCEPT)
+  end
   if not cacheHooks and AUDIO_CACHE_COPY and AUDIO_CACHE_COPY~=0 then
     cacheHooks=true
     emu.addMemoryCallback(function()
@@ -22,6 +25,16 @@ function AUDIO_PROFILE_INIT()
     emu.addMemoryCallback(function()
       if row then mark('instruments');row.uploads[#row.uploads+1]=emu.getState()['cpu.x'] end
     end,emu.callbackType.exec,AUDIO_CACHE_SEND,AUDIO_CACHE_SEND)
+    emu.addMemoryCallback(function()
+      if row then
+        mark('compact')
+        local x=emu.getState()['cpu.x']
+        row.moves[#row.moves+1]={id=H.r16(0x7E1E28+x),src=H.r16(0x7E1E48+x),dst=H.r16(0x7E1E1B),bytes=H.r16(0x7E1E6A+x)}
+      end
+    end,emu.callbackType.exec,AUDIO_RESUME_COPY,AUDIO_RESUME_COPY)
+    emu.addMemoryCallback(function()
+      if row then mark('instruments');row.uploads[#row.uploads+1]=emu.getState()['cpu.x'] end
+    end,emu.callbackType.exec,AUDIO_RESUME_SEND,AUDIO_RESUME_SEND)
     if AUDIO_EXT_SEND and AUDIO_EXT_SEND~=0 then
       emu.addMemoryCallback(function()
         if row then mark('extended_samples');row.extended_bytes=emu.getState()['cpu.x'] end
@@ -31,14 +44,15 @@ function AUDIO_PROFILE_INIT()
     end
   end
 end
-emu.addMemoryCallback(function()
+local function beginLoadRow()
   if H.r8(0x7E1E01)==H.r8(0x7E1E05) then return end
   row={song=H.r8(0x7E1E01),p2=H.r8(0x7E1E02),p3=H.r8(0x7E1E03),moves={},uploads={},
     history={H.r8(0x7EDD18),H.r8(0x7EDD19),H.r8(0x7EDD1A),H.r8(0x7EDD1B),H.r8(0x7EDD1C)}}
   row.cache={}
   for k=0,15 do row.cache[#row.cache+1]={id=H.r16(0x7E1E28+2*k),addr=H.r16(0x7E1E48+2*k),bytes=H.r16(0x7E1E6A+2*k)} end
   rows[#rows+1]=row;stage='fade';stamp=now()
-end,emu.callbackType.exec,0xC30198,0xC30198)
+end
+emu.addMemoryCallback(beginLoadRow,emu.callbackType.exec,0xC30198,0xC30198)
 for _,t in ipairs({{0xC30200,'echo_setup'},{0xC30203,'sequence'},
     {0xC3028D,'cache_plan'},{0xC30379,'compact'},{0xC304C2,'tables'},
     {0xC30592,'finish'},{0xC3018D,'driver_start'}}) do

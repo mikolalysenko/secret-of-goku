@@ -58,7 +58,25 @@ endif
 !au_testloop #= !aw+$1E   ; test: loop id + 1 kept on every frame (0 none)
 !au_backoff  #= !aw+$1F   ; frames to wait before the next transfer
 !au_ch       #= !aw+$20   ; channel 0; channel 1 at +$20
-!au_tmp      #= !aw+$60   ; scratch $60-$7F
+!au_tmp      #= !aw+$60   ; scratch $60-$7F; owned resumable-loader state while active
+!au_sl_state #= !au_tmp+$00
+!au_sl_step  #= !au_tmp+$01
+!au_sl_next  #= !au_tmp+$02
+!au_sl_token #= !au_tmp+$03
+!au_sl_budget #= !au_tmp+$04
+!au_sl_src   #= !au_tmp+$05 ; 24-bit source
+!au_sl_left  #= !au_tmp+$08
+!au_sl_dst   #= !au_tmp+$0A
+!au_sl_mode  #= !au_tmp+$0C
+!au_sl_index #= !au_tmp+$0D
+!au_sl_aux   #= !au_tmp+$0F
+!au_sl_tail  #= !au_tmp+$11
+!au_sl_need  #= !au_tmp+$13
+!au_sl_msrc  #= !au_tmp+$15
+!au_sl_mdst  #= !au_tmp+$17
+!au_sl_mleft #= !au_tmp+$19
+!au_sl_extmask #= !au_tmp+$1B
+!au_load_fast #= $7E0000+!au_tmp+$1D ; bit0 fast receiver, bit1 async active
 ; channel fields end at $1B: the last four bytes of each channel block hold
 ; module globals
 !au_native   #= !aw+$3C   ; last native song: id|$80 (0 none), echo preset, p3
@@ -425,6 +443,16 @@ audio_fade:
 ; Field and world frames: M16/X16, DB = $7E, D = 0.
 audio_frame:
 	PHP
+if !AUDIO_CUSTOM_SAMPLES
+	; An accepted Vegeta song owns the native mailbox until its FE release.
+	; Resume it before every quiet-path shortcut; other module requests remain
+	; queued in their ordinary WRAM mailboxes and run when it completes.
+	LDA.l !au_load_fast : AND.w #$0002 : BEQ .ordinary
+	JSR audio_songload_frame
+	BCC + : JMP audio_frame_done
++	JMP .run8
+.ordinary
+endif
 if not(defined("AUDIO_PCM"))
 	; Dispatcher enters M16/X16. Quiet frames need no loop-age service.
 	LDA.w !au_test
@@ -750,6 +778,14 @@ audio_pause:
 	PHP
 	SEP #$20
 	REP #$10
+if !AUDIO_CUSTOM_SAMPLES
+	LDA.l !au_load_fast : BIT.b #2 : BEQ .ordinary
+	JSR audio_songload_frame
+	BCC .ordinary
+	PLP
+	RTL
+.ordinary
+endif
 	JSL audio_native_poll
 if not(defined("AUDIO_PCM"))
 	STZ.w !au_reqn
@@ -2065,6 +2101,9 @@ incsrc "native.asm"
 incsrc "rare.asm"
 
 incsrc "songload.asm"
+if !AUDIO_CUSTOM_SAMPLES
+incsrc "resumable.asm"
+endif
 incsrc "cache.asm"
 incsrc "extended.asm"
 

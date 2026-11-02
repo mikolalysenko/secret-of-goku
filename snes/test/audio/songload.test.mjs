@@ -80,6 +80,43 @@ test('a transfer may end after any unrolled packet, without writing a following 
  }
 });
 
+test('native mode-three to mode-seven transition preserves cache moves',()=>{
+ const h=setup(),src=0x7B66,dst=0x70DA,n=1035;
+ const original=Uint8Array.from({length:n},(_,i)=>(i*131+(i>>8)*23)&255);h.ram.set(original,src);
+ begin(h,3,0x1A00);
+ for(let i=0;i<36;i+=3){for(let p=1;p<=3;p++)h.cpuWrite(p,i+p);const t=i/3+1;h.cpuWrite(0,t);h.waitFor(()=>h.cpuRead(0)===t);}
+ h.cpuWrite(1,7);h.cpuWrite(2,src&255);h.cpuWrite(3,src>>8);h.cpuWrite(0,0);h.waitFor(()=>h.cpuRead(0)===0);
+ const word=(v,c)=>{h.cpuWrite(2,v);h.cpuWrite(3,v>>8);h.cpuWrite(0,c);h.waitFor(()=>h.cpuRead(0)===c);};
+ word(dst,1);word(n,2);end(h);assert.deepEqual(h.ram.slice(dst,dst+n),original);
+});
+
+test('chunked moves finish before a following upload reuses their source',()=>{
+ const h=setup(),n=1035,src=0x7B66,dst=0x70DA;
+ const original=Uint8Array.from({length:n},(_,i)=>(i*131+(i>>8)*23)&255);h.ram.set(original,src);
+ const word=(v,c)=>{h.cpuWrite(2,v);h.cpuWrite(3,v>>8);h.cpuWrite(0,c);h.waitFor(()=>h.cpuRead(0)===c);};
+ for(let at=0;at<n;at+=256){
+  const token=at/256*3;
+  if(at===0)begin(h,7,src);else word(src+at,token);
+  word(dst+at,token+1);word(Math.min(256,n-at),token+2);
+ }
+ const replacement=Uint8Array.from({length:36},(_,i)=>i*17&255);
+ h.cpuWrite(1,3);h.cpuWrite(2,src&255);h.cpuWrite(3,src>>8);h.cpuWrite(0,0);h.waitFor(()=>h.cpuRead(0)===0);
+ for(let i=0;i<replacement.length;i+=3){
+  for(let p=1;p<=3;p++)h.cpuWrite(p,replacement[i+p-1]);const token=i/3+1;h.cpuWrite(0,token);h.waitFor(()=>h.cpuRead(0)===token);
+ }
+ end(h);assert.deepEqual(h.ram.slice(dst,dst+n),original);
+});
+
+test('packet pauses and splits retain exact data across independent clocks',()=>{
+ for(const gap of [0,1,17,300,2000]){
+  const h=setup(),n=771,bytes=Uint8Array.from({length:n},(_,i)=>(i*91+i/3)&255);begin(h,4,0x5001);
+  for(let i=0;i<n;i+=3){
+   h.step(gap);for(let p=1;p<=3;p++)h.cpuWrite(p,bytes[i+p-1]);const token=i/3%255+1;
+   h.cpuWrite(0,token);h.waitFor(()=>h.cpuRead(0)===token);for(let p=1;p<=3;p++)h.cpuWrite(p,0xCD);
+  }
+  end(h);assert.deepEqual(h.ram.slice(0x5001,0x5001+n),bytes,`pause ${gap}`);
+ }
+});
 test('fast compaction preserves unaligned overlapping moves and consecutive copies',()=>{
  for(const n of [1,9,255,256,257,4014,6714])for(const gap of [0,41]){
   const h=setup();
