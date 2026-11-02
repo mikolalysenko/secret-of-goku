@@ -668,17 +668,12 @@ fx_kick_stop:
 ; Clear all spawned effects. Preserves nothing.
 fx_clear_slots:
 	SEP #$20
-	LDX.w #(!FX_SLOTS-1)*16
--	LDA.b #$00
-	STA.l !fx_slots+!S_KIND,X
+	for i = 0..14
+		LDA.b #$00
+		STA.l !fx_slots+!S_KIND+(!i*16)
+	endfor
 	REP #$20
-	TXA
-	SEC
-	SBC.w #16
-	TAX
-	SEP #$20
-	BPL -
-	REP #$20
+	LDX.w #$FFF0
 	LDA.w #$0000
 	STA.l !fx_nlive
 	STA.l !fx_hiwater

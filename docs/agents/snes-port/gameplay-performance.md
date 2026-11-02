@@ -2089,3 +2089,7 @@ is overwritten by the caller, while final Y still comes from the mask.
 Completed field vblanks now reuse the pad core captured at frame start rather
 than waiting for auto-joypad a second time. The capture's vblank serial must
 match, so lag vblanks always retain the original hardware wait and read.
+
+The 14 FX slot clears now use constant addresses instead of a decrementing
+loop. The exact bytes and final 16-bit index are preserved, with no change
+to the measured boss results.

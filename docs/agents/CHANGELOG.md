@@ -6,6 +6,9 @@ stay traceable even when they are committed together.
 
 ## SNES Action Grid sprite fix (2026-11-01)
 
+- Unroll the 14 constant-address FX slot clears. This removes all loop and
+  pointer arithmetic while preserving the final 16-bit index; FX and boss
+  checks pass with timing unchanged at Rider 13/240 and Beast 71/240.
 - Reuse core's captured pad on completed field vblanks instead of waiting
   for auto-joypad again. A vblank serial check keeps the hardware wait and
   read on every lag vblank. Combat and boss input results are unchanged.
