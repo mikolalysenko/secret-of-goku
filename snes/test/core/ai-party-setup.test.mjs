@@ -97,6 +97,15 @@ test('status and alternate target masks retain the retail setup',()=>{
   compare({d9:2,e011:2,e01c:1});
 });
 
+test('the retail fallback keeps the $C57B status mask',()=>{
+  // statuses outside the mask (poison $2000 and others) with each fallback cause
+  for(const status of [[0x2000,0,0],[0,0x0004,0],[0,0,0x1000],[0x0080,0x0200,0x0800]]){
+    compare({status,d9:2});
+    compare({status,e011:2,e01c:0});
+    compare({status,d9:0,da:1});
+  }
+});
+
 test('a valid party target retains script setup and target flags',()=>{
   for(const actor of [0xE200,0xE400])for(const initialFlags of [0x20,0x22,0xAA])
     compare({actor,initialFlags,e011:2,e01c:0});

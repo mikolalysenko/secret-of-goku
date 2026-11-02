@@ -2058,7 +2058,7 @@ core_ai_cadence:
 ; complete target selections. The first mask names Goku, but his action is not
 ; the targetable $02 (or his $1C flags forbid it); the other masks are empty.
 ; Rejoin at 249D with the same X and frame local as the failed third selection.
-; Every other state repeats the replaced load and takes the retail loop.
+; Every other state repeats the replaced load and mask and takes the retail loop.
 core_native_ai_party_setup:
 	LDA.w $E190
 	ORA.w $E390
@@ -2086,6 +2086,7 @@ core_native_ai_party_setup:
 .native
 	REP #$20
 	LDA.w $0190,X
+	AND.w #$C57B                    ; the replaced AND (its operand stays at C1:246A)
 	JML $C1246C
 
 ; C1:2710: highest set bit of X, or $00FF for zero. X returns bit+1
