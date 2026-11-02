@@ -148,21 +148,10 @@ fl_tp_advance:
 	LDA.l !fl_tp_age
 	CMP.w #4
 	BCC .end
-	SEP #$20
-	LDA.l $00213F
-	LDA.l $002137
-	LDA.l $00213D
-	XBA
-	LDA.l $00213D
-	AND.b #$01
-	XBA
-	REP #$20
-	CMP.w #100
-	BCC .finish
-	LDA.w #4
-	STA.l !fl_tp_age
-	BRA .end
-.finish
+	; Finish on the first frame at age 4, as in 0.2.0. Waiting for a frame
+	; that reached this point before line 100 (719ebb1) had no bound: crowded
+	; boss fights (Hexas, Mech Rider) held Goku hidden with input masked for
+	; seconds, sometimes until something else changed.
 	JSR fl_tp_finish
 .arrived
 	LDA.w !fl_hook
