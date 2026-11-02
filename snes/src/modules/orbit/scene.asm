@@ -362,7 +362,12 @@ orbit_background:
 	REP #$20
 	BEQ +
 	RTS                            ; (a montage picture: no globe, stars or beams)
-+	JSR orbit_vcount
++
+if defined("ORBIT_BURSTS_TEAR") == 0
+	JSL bl_pass_far                ; the bursts' room on full lines, in the OAM the vblank sends (bline.asm)
+	REP #$30
+endif
+	JSR orbit_vcount
 	CMP.w #!ORBIT_DEADLINE
 	BCS .done
 	JSR beam_update                ; beam pictures first: the most visible

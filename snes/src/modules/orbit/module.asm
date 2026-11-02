@@ -788,6 +788,30 @@ assert !sc_next+2 <= !bq_n, "the bodies' pending steps run into the picture queu
 !sb_held   = !SB+$DBE              ;   the bodies that hold back (bits 0-2)
 assert !bw_ymin+4 <= !sb_room, "the bodies' room counts run into the beams' layer lines"
 assert !sb_held+2 <= !bc_sig, "the bodies' held bits run into the beam runs' signatures"
+; The bursts on the sprite lines (bline.asm): the OAM ranges the frame drew
+; its hit bursts and the distant bodies' impacts in (draw.asm, scdraw.asm),
+; read in its spare time.
+!bl_h0     = !o_tmp+2              ; the hits' first OAM byte (fd_hits, sparks with them)
+!bl_h1     = !o_tmp+4              ;   and past their last
+!bl_i0     = !SB+$0FC              ; the impacts' first OAM byte (sc_draw)
+!bl_i1     = !SB+$0FE              ;   and past their last
+!BL_LATE   = 190                   ; the pass starts in a fight frame's spare time before this scanline
+!BL_HEAVY  = 20                    ; the beams' slivers a line (the stars' limits, sc_sig) from which an impact gives way
+!BL_INSET  = 4                     ; the hits' box less this many pixels each side
+; (its scratch: band table A, idle while the fight runs)
+!bl_core   = !BD_TAB_A             ; 16 words: the live hits' cores' places (x | y << 8, laser frames)
+!bl_nc     = !BD_TAB_A+$20         ;   (their count x 2)
+!bl_c      = !BD_TAB_A+$22         ; 3 x 2 bytes: the heavy beam rows (first, last; first > last: none)
+!bl_t      = !BD_TAB_A+$28
+!bl_sz     = !BD_TAB_A+$2A         ; an entry's size and box (x signed; lines)
+!bl_x0     = !BD_TAB_A+$2C
+!bl_x1     = !BD_TAB_A+$2E
+!bl_y0     = !BD_TAB_A+$30
+!bl_y1     = !BD_TAB_A+$32
+!bl_hx0    = !BD_TAB_A+$34         ; the hits' box
+!bl_hx1    = !BD_TAB_A+$36
+!bl_hy0    = !BD_TAB_A+$38
+!bl_hy1    = !BD_TAB_A+$3A
 
 
 ; OBJ VRAM the scene owns while it shows (name base $6000, 16/32 sizes).
@@ -915,6 +939,7 @@ orbit_code3_start:
 incsrc "strike.asm"
 incsrc "scline.asm"
 incsrc "beamrun.asm"
+incsrc "bline.asm"
 orbit_code3_end:
 assert orbit_code3_end <= !CODE_ORBIT3+$4000, "orbit third code area overflow"
 pullpc

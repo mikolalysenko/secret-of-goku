@@ -29,6 +29,10 @@ sc_draw_live:
 +	RTS
 sc_draw:
 	JSR sc_wants
+if defined("ORBIT_BURSTS_TEAR") == 0
+	LDA.w !o_slot                  ; (the impacts' entries: bline.asm)
+	STA.w !bl_i0
+endif
 	; impacts: fd_burst (nine sub-bursts) at the shattered body's place,
 	; its copy kept, at priority 0
 	LDA.w !sc_imp
@@ -79,6 +83,10 @@ sc_draw:
 	DEX : DEX
 	BPL .imp
 .bodies
+if defined("ORBIT_BURSTS_TEAR") == 0
+	LDA.w !o_slot
+	STA.w !bl_i1
+endif
 	; the bodies (their rows on the sprite lines noted afresh)
 	STZ.w !sb_dsig
 	STZ.w !sb_dsig+2

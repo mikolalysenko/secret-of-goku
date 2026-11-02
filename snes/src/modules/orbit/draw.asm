@@ -184,7 +184,15 @@ fight_draw:
 	JMP fc_draw                    ; the finale's own picture (fdraw.asm)
 +	JSR fd_beam_wants
 	JSR aura_wants
+if defined("ORBIT_BURSTS_TEAR") == 0
+	LDA.w !o_slot                  ; (the hits' entries: bline.asm)
+	STA.w !bl_h0
 	JSR fd_hits
+	LDA.w !o_slot
+	STA.w !bl_h1
+else
+	JSR fd_hits
+endif
 	JSR fd_warning
 	JSR fd_boss_shots
 	JSR fd_ki
