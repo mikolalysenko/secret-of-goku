@@ -6,6 +6,8 @@ stay traceable even when they are committed together.
 
 ## SNES Action Grid sprite fix (2026-11-01)
 
+- Unroll the remaining 72-byte Beast graphics copy, reducing its exact
+  decode from 1,704 to 1,354 CPU cycles; the bsnes result remains 71/240.
 - Fuse the Beast's 96-byte native add and pack passes and replace its
   `C1:5DE8` stream with exact sparse zero output. Complete add/pack cost
   falls 34%; the zero decode costs 15,667 -> 2,655 CPU cycles. Beast drops

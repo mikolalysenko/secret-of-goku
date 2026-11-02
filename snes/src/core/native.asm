@@ -1225,27 +1225,35 @@ core_native_lz_beast:
 	JML cb_native_lz_zero
 +
 	CMP.w #$5D22
-	BNE .native
+	BEQ +
+	JMP .native
++
 	LDA $78
 	AND.w #$00FF
 	CMP.w #$00C1
-	BNE .native
+	BEQ +
+	JMP .native
++
 	LDA $72
 	CMP.w #12
-	BNE .native
+	BEQ +
+	JMP .native
++
 	LDA $74
 	CMP.w #72
-	BNE .native
+	BEQ +
+	JMP .native
++
 	SEP #$30
 	LDX.b #0
 	LDY.b #0
 .cell
-	LDA.l core_lz_beast_data,X
-	STA [$7C],Y
-	INX
-	INY
-	CPY.b #12
-	BCC .cell
+	for i = 0..12
+		LDA.l core_lz_beast_data,X
+		STA [$7C],Y
+		INX
+		INY
+	endfor
 	CPX.b #72
 	BEQ .copied
 	LDY.b #0

@@ -2073,3 +2073,7 @@ only once and runs one unrolled loop. Its complete differential cost falls
 history, registers and flags, and costs 15,667 -> 2,655 cycles. Beast falls
 from 85 to 71 missed updates out of 240 on bsnes, and measures 169/720 over
 three scripts; Rider remains 13/240.
+
+The remaining 72-byte C1:5D22 copy now unrolls its 12-byte rows. Full
+decoder differentials still match and its runtime cost falls from 1,704 to
+1,354 CPU cycles; this does not further change the 71/240 Beast result.
