@@ -305,8 +305,9 @@ records frame, map and position. For later scenes, start from a checkpoint
 and call `H.importSnesJs`.
 
 `node snes/test/core/run.mjs [test ...]` builds a `CORE_TEST` cartridge (a
-client of every service driven through a WRAM mailbox, `snes/test/core/testmod.asm`)
-and runs the core tests; `node snes/test/core/measure.mjs` reprints the
+client of every service driven through a WRAM mailbox, `snes/test/core/testmod.asm`,
+assembled in the debug bank's free tail at `$AF:F000` because the core bank
+has no room for it) and runs the core tests; `node snes/test/core/measure.mjs` reprints the
 per-scene timing table in engine.md. `live` checks the power-on clear of
 the live block, and `xdata` reads the 32-byte probe that
 `snes/gen/core-xdata.mjs` places in the extended banks back through the

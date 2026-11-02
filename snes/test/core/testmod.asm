@@ -1,6 +1,8 @@
 ; CORE_TEST builds only (node snes/build.mjs -DCORE_TEST=1 ...): a test
 ; client of the core services, driven by Lua through a WRAM mailbox at
-; !core_test (7E:6F40, 128 bytes). Included inside the core code bank.
+; !core_test (7E:6F40, 128 bytes). Assembled in the debug bank's free tail
+; at !CODE_DEBUG+$7000 (core.asm); keep it bank-independent: long entries,
+; RTL, and data banks taken from its own labels.
 ;
 ; +$00 cmd (Lua writes; cleared when done)  +$02 result (carry -> 1)
 ; +$04 pad mask, +$06 pad inject (requested every frame while nonzero)

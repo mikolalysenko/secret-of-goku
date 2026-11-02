@@ -1015,12 +1015,24 @@ incsrc "services.asm"
 incsrc "save.asm"
 incsrc "vram.asm"
 incsrc "cgram.asm"
-if defined("CORE_TEST")
-	incsrc "../../test/core/testmod.asm"
-endif
 
 core_code_end:
 assert core_code_end <= !CODE_CORE+$7000, "core code bank overflow (dispatch tables start at +$7000)"
 pullpc
+
+if defined("CORE_TEST")
+; The test client no longer fits beside the runtime in the core bank. It is
+; entered with JSL, returns with RTL and takes data banks from its own
+; labels, so it runs from the debug bank's free tail, below that bank's hook
+; table. Release builds leave this space empty.
+pushpc
+org !CODE_DEBUG+$7000
+core_test_start:
+	incsrc "../../test/core/testmod.asm"
+core_test_end:
+assert debug_code_end <= core_test_start, "CORE_TEST: debug code reaches the test client"
+assert core_test_end <= !CODE_DEBUG+$7F00, "CORE_TEST: test client reaches the debug hook table"
+pullpc
+endif
 
 incsrc "hooks.asm"
