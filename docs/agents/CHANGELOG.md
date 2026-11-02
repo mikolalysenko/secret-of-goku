@@ -4,6 +4,46 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES release: 0.3.0 (2026-11-02)
+
+- Published as a GitHub release:
+  https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.3.0
+  - The annotated tag `snes-v0.3.0` points at d608aaa on `combat-polish`.
+    `combat-polish` and then `main` were fast-forwarded to it at the
+    maintainer's request, so Pages redeployed from the same tree (its tests
+    and deploy passed).
+  - It was published with `--latest=false`, so the desktop `v0.2.5` keeps
+    GitHub's Latest badge.
+  - Assets: the IPS, the patch-only ZIP (IPS, README, CREDITS, LICENSE,
+    SHA256SUMS), README-SNES.txt, SHA256SUMS, and seven native 256×224
+    Mesen captures from the release ROM (identical to captures of the
+    pre-review build).
+  - Output ROM SHA-256 `c449ae78af2aa06736cd6718a4aa610c578da0885be4c2712c2b8075c6934d58`
+    (8,388,608 bytes); IPS SHA-256
+    `90b3221ca41745212a8cb03f200b22c9cee44586e1d7f6ade89c3399de61ea7f`
+    (38,060 records); ZIP SHA-256
+    `b93ef9e646d41e12802fb48a3a4ac2bc9a2e94cbb6f5f6951bcbd44857457c84`.
+- Verification:
+  - `snes/release.mjs` on a clean checkout (`dirty: false`); the IPS tests
+    pass.
+  - The vendored RomPatcher.js (v20250430) reproduced the ROM byte for
+    byte, both from the local package and from the IPS downloaded back
+    from the release.
+  - The full Mesen suite on d608aaa under both probes: 19 of 20 modules
+    pass. `gameplay` fails only on the known full-party Mech Rider case
+    (16/240 misses, 42 long NMIs, no PPU write outside vblank), unchanged
+    from de0273a. The write probe's only entries outside the known retail
+    `C0:25F6` DMA and core's `hdmaen` test are in the test-only
+    hidden-Frieza flyby reference build. Unit tests: 252, 250 pass,
+    2 skipped. Browser: `npm test` 392 (386 pass, 6 skipped) and the build.
+- Contents: everything since 0.2.0 on `combat-polish` through de0273a, plus
+  the six review fixes above. `beam-warmup` (vertical Kamehameha strip
+  warm-up) was merged after the tag as 20c013b and ships in the next
+  release.
+- A Romhacking.net forum reply and hack-entry update were prepared for the
+  maintainer under `.local/romhacking/v0.3.0/`; only the maintainer posts
+  them.
+
 ## SNES 0.3.0 release review: six regressions fixed (2026-11-02)
 
 A review of everything since `snes-v0.2.0` before cutting 0.3.0, with a
