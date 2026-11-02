@@ -1,4 +1,4 @@
-// Native C2:2A17 word-array addition, including its unrolled hot sizes.
+// C2:29CE's fused 96-byte add and 32-byte packed output.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -16,17 +16,18 @@ function runner(path){
     ((a>>>16)&0x7F)<0x40&&(a&0xFFFF)<0x2000?a&0x1FFF:-1;
   const cpu=new context.Cpu({cpuRead:a=>at(a)>=0?ram[at(a)]:rom[hiromToPc(a,rom.length)],
     cpuWrite:(a,v)=>{const p=at(a);assert(p>=0,`unexpected write $${a.toString(16)}`);ram[p]=v;}});
-  return ({count,p=0,initialY=0x1234,seed=0,entry=0x2A17})=>{
+  return ({p=0,initialY=0x1234,seed=0,record=0xE600}={})=>{
     for(let i=0;i<ram.length;i++)ram[i]=(i*73+seed*29+11)&255;
     ram.writeUInt16LE(0x2000,0x76);ram.writeUInt16LE(0x3000,0x79);
-    ram.writeUInt16LE(count,0x66);ram.writeUInt16LE(0,0xC5);
+    ram.writeUInt16LE(96,0x66);ram.writeUInt16LE(0,0xC5);ram.writeUInt16LE(record,0x87);
+    ram.writeUInt16LE(0x4000,record+0x29);ram.writeUInt16LE(1,record+0x9A);
     cpu.reset();cpu.e=false;cpu.m=false;cpu.x=false;
     for(const [i,f] of flags.entries())if(f!=='m'&&f!=='x')cpu[f]=!!(p&(1<<i));
-    cpu.r.set([0x7E,0xC2]);cpu.br.set([0xABCD,0x2345,initialY,0x1EFD,entry,0]);
+    cpu.r.set([0x7E,0xC2]);cpu.br.set([0xABCD,record,initialY,0x1EFD,0x29CE,0]);
     ram.writeUInt16LE(0x6FFF,0x1EFE);
     let cycles=0;
     for(let n=0;cpu.r[1]!==0xC2||cpu.br[4]!==0x7000;n++){
-      assert(n<1000,'native add did not return');cpu.cyclesLeft=0;cpu.cycle();cycles+=cpu.cyclesLeft+1;
+      assert(n<10000,'native add/pack did not return');cpu.cyclesLeft=0;cpu.cycle();cycles+=cpu.cyclesLeft+1;
     }
     ram.fill(0,0x1EF0,0x1F00);
     return {ram:Buffer.from(ram),registers:[...cpu.r,...cpu.br],flags:flags.map(f=>cpu[f]),cycles};
@@ -44,15 +45,11 @@ function compare(input){
   return [a,b];
 }
 
-test('native word-array addition preserves every output and reduces hot-loop cost',t=>{
-  const costs={};
-  for(const count of [2,4,6,8,10,94,96,98])for(const p of [0,8,0xC5,0xF5])for(const seed of [0,1,255]){
-    const [a,b]=compare({count,p,seed});(costs[count]??=[]).push([a.cycles,b.cycles]);
+test('fused native add/pack preserves every output and reduces hot-path cost',t=>{
+  let oldTotal=0,newTotal=0;
+  for(const p of [0,1,4,8,0xC5,0xF5])for(const seed of [0,1,2,255])for(const record of [0xE600,0xE800]){
+    const [a,b]=compare({p,seed,record});oldTotal+=a.cycles;newTotal+=b.cycles;
   }
-  for(const count of [6,96]){
-    const old=costs[count].reduce((n,r)=>n+r[0],0),now=costs[count].reduce((n,r)=>n+r[1],0);
-    t.diagnostic(`${count}-byte add: ${old} -> ${now} CPU cycles`);
-  }
-  const old96=costs[96].reduce((n,r)=>n+r[0],0),now96=costs[96].reduce((n,r)=>n+r[1],0);
-  assert(now96<old96*.85,`96-byte add ${old96} -> ${now96}`);
+  t.diagnostic(`96-byte add + pack: ${oldTotal} -> ${newTotal} CPU cycles`);
+  assert(newTotal<oldTotal*.85,`add/pack cycles ${oldTotal} -> ${newTotal}`);
 });

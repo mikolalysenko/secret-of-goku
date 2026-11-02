@@ -2,9 +2,11 @@
 ; asserted (native.asm has the handlers; bind.asm the movement hooks).
 
 if not(defined("COMBAT_NATIVE_ADD_SLOW"))
-%orig4($C22A17, $B118C5A4)
-%orig1($C22A1B, $76)
-%hijack($C22A17, cb_native_add_words, 5, combat)
+%orig4($C229CE, $BD2A1720)
+%orig4($C229D2, $79850029)
+%orig4($C229D6, $850060A9)
+%orig4($C229DA, $2A272066)
+%hijack($C229CE, cb_native_add_pack96, 16, combat)
 endif
 
 ; Field vblank counter and per-vblank pad (the browser's 60 Hz combat clock

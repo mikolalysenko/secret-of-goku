@@ -1046,40 +1046,55 @@ combat_recoil_commit:
 	PLA
 	PLP
 	RTL
-; C2:2A17 adds two word arrays. Its hot callers use six-byte and 96-byte
-; counts; fully unroll those loops and retain the retail general path.
-macro cb_native_add_word()
+; C2:29CE adds 96 bytes and immediately packs the same source into 32.
+; Fuse those passes: retain every source write while avoiding the second
+; source read and one loop. X holds the packed destination, Y the source.
+macro cb_native_add_pack96_word0()
 	CLC
 	LDA ($76),Y
 	ADC ($79),Y
 	STA ($76),Y
 	INY : INY
+	AND.w #$1F00
+	ASL : ASL
+	STA $68
+endmacro
+macro cb_native_add_pack96_word1()
+	CLC
+	LDA ($76),Y
+	ADC ($79),Y
+	STA ($76),Y
+	INY : INY
+	AND.w #$1F00
+	LSR : LSR : LSR
+	ORA $68
+	STA $68
+endmacro
+macro cb_native_add_pack96_word2()
+	CLC
+	LDA ($76),Y
+	ADC ($79),Y
+	STA ($76),Y
+	INY : INY
+	AND.w #$1F00
+	XBA
+	ORA $68
+	STA $0000,X
+	INX : INX
 endmacro
 
-cb_native_add_words:
+cb_native_add_pack96:
+	LDA $0029,X
+	TAX
 	LDY $C5
-	LDA $66
-	CMP.w #6
-	BEQ .six
-	CMP.w #96
-	BEQ .ninety_six
-.general
-	%cb_native_add_word()
-	CPY $66
-	BNE .general
-	JML $C22A26
-.six
-	for i = 0..3
-		%cb_native_add_word()
+	for i = 0..16
+		%cb_native_add_pack96_word0()
+		%cb_native_add_pack96_word1()
+		%cb_native_add_pack96_word2()
 	endfor
 	CPY $66
-	JML $C22A26
-.ninety_six
-	for i = 0..48
-		%cb_native_add_word()
-	endfor
-	CPY $66
-	JML $C22A26
+	STX $79
+	JML $C229DE
 
 ; C1:5DE8 expands to sixteen zeroed 16-byte rows. Write the same sparse
 ; output directly, including the retail final source/destination and history.

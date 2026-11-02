@@ -2065,10 +2065,11 @@ fallbacks. Three consecutive bsnes scripts improve Rider 66 -> 59 and Beast
 227 -> 226 missed field updates out of 720.
 
 Profiling the measured Beast window with a local instrumented bsnes core
-identified C2:2A17's word-array addition and the C1:5DE8 graphics stream.
-The 96-byte addition is now unrolled (19,692 -> 15,996 cycles over the
-differential corpus), with all other sizes on the same general loop. C1:5DE8
-expands to sixteen zeroed 16-byte rows; its exact sparse writer preserves
-all row gaps, pointers, history, registers and flags, and costs 15,667 ->
-2,655 cycles. The current single bsnes runs are Rider 13/240 and Beast
-85/240 missed field updates.
+identified C2:29CE's adjacent add/pack passes and the C1:5DE8 graphics
+stream. The fused caller retains every source write but reads the source
+only once and runs one unrolled loop. Its complete differential cost falls
+165,072 -> 109,632 cycles (about 34%). C1:5DE8 expands to sixteen zeroed
+16-byte rows; its exact sparse writer preserves all row gaps, pointers,
+history, registers and flags, and costs 15,667 -> 2,655 cycles. Beast falls
+from 85 to 71 missed updates out of 240 on bsnes, and measures 169/720 over
+three scripts; Rider remains 13/240.

@@ -6,10 +6,10 @@ stay traceable even when they are committed together.
 
 ## SNES Action Grid sprite fix (2026-11-01)
 
-- Unroll the native 96-byte word-array addition and replace the Beast's
-  `C1:5DE8` stream with its exact sparse zero output. The zero decode costs
-  15,667 -> 2,655 CPU cycles; current bsnes results are Rider 13/240 and
-  Beast 85/240 missed field updates.
+- Fuse the Beast's 96-byte native add and pack passes and replace its
+  `C1:5DE8` stream with exact sparse zero output. Complete add/pack cost
+  falls 34%; the zero decode costs 15,667 -> 2,655 CPU cycles. Beast drops
+  from 85 to 71 missed updates out of 240 on bsnes (169/720 longer run).
 - Fuse the native multipart sprite loop with its piece emitter in binary
   mode, retaining the retail decimal-mode path. Complete assembled group
   differentials match, and 720-frame bsnes runs improve Mech Rider 66 -> 59
