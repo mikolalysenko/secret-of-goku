@@ -2055,3 +2055,11 @@ full reset path and balanced stack. These reduce the Beast result to 85/240.
 The native body emitter now performs its 8-bit flag test without an
 unnecessary PHP/PLA pair. All actor/OAM differentials pass; the six-piece
 interior case costs 719 -> 712 cycles.
+
+The C2 multipart actor group now keeps its whole piece loop in core for
+binary-mode callers, removing the per-piece JSR/JML/RTS round trip and
+shortening visibility tests. Decimal mode retains the retail group. The
+assembled differential covers complete groups, all live RAM, registers and
+flags in both attribute modes, including clipping, high bits and decimal
+fallbacks. Three consecutive bsnes scripts improve Rider 66 -> 59 and Beast
+227 -> 226 missed field updates out of 720.

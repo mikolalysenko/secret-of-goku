@@ -1049,6 +1049,171 @@ endmacro
 %core_special_piece(core_native_special_piece, 0)
 %core_special_piece(core_native_special_piece_alt, 1)
 
+; C2:1FB5's multipart group. In the ordinary binary-mode
+; case, keep the whole piece loop here: this removes the native JSR/JML/RTS
+; round trip for every piece and shortens the visibility bounds tests. The
+; decimal-mode group retains every retail instruction.
+core_native_special_group:
+	PHP
+	SEP #$20
+	PLA
+	REP #$20
+	AND.w #$0008
+	BEQ +
+	JML core_special_group_native
++
+	LDA $0066,X
+	LSR
+	EOR.w #$FFFF
+	CLC
+	ADC $91
+	STA $91
+	LDA $85
+	DEC
+	STA $97
+	ASL : ASL
+	CLC
+	ADC $79
+	STA $79
+	LDA $0070,X
+	BIT.w #$0008
+	BEQ core_special_group_normal_loop
+	JMP core_special_group_alt_loop
+
+macro core_special_group_piece(name, alternate)
+<name>:
+	LDA $95
+	ASL : ASL
+	TAX
+	LDA ($79)
+	AND.w #$00FF
+	BIT.w #$0080
+	BEQ +
+	ORA.w #$FF00
++	CLC
+	ADC $8F
+	STA $97
+	CLC
+	ADC.w #$0020
+	CMP.w #$0120
+	BCC +
+	JMP .offX
++
+	LDA $97
+	STA $0800,X
+	STA $99
+	LDA ($79)
+	AND.w #$FF00
+	BPL +
+	ORA.w #$00FF
++	XBA
+	CLC
+	ADC $91
+	STA $97
+	CLC
+	ADC.w #$0020
+	CMP.w #$0100
+	BCC +
+	JMP .offY
++
+	LDA $97
+	STA $0801,X
+	LDY.w #$0002
+	LDA ($79),Y
+	STA $9B
+if <alternate> == 0
+	ORA.w #$2000
+else
+	AND.w #$DFFF
+endif
+	STA $97
+	STA $0802,X
+	SEP #$30
+	LDA $9C
+	BIT.b #$20
+	BNE .packedHigh
+	LDA $9A
+	BMI .packedHigh
+	LDA $95
+	AND.b #$03
+	TAX
+	LDA.l $C221B3,X
+	TAY
+	LDA $95
+	LSR : LSR
+	TAX
+	TYA
+	AND $0A00,X
+	STA $0A00,X
+	LDA $9C
+	BIT.b #$20
+	BRA .accepted
+.packedHigh
+	LDA $95
+	AND.b #$03
+	TAX
+	LDA $95
+	LSR : LSR
+	TAY
+	LDA.l $C221B3,X
+	AND $0A00,Y
+	STA $0A00,Y
+	LDA $9A
+	BPL .large
+	LDA.l $D97F2D,X
+	ORA $0A00,Y
+	STA $0A00,Y
+.large
+	LDA $9C
+	BIT.b #$20
+	BEQ .small
+	LDA.l $D97F31,X
+	ORA $0A00,Y
+	STA $0A00,Y
+	PHA
+	LDA.l $D97F31,X
+	TYX
+	TAY
+	PLA
+	BRA .accepted
+.small
+	LDA.l $D97F2D,X
+	TYX
+	TAY
+	LDA $9C
+	BIT.b #$20
+.accepted
+	REP #$30
+	INC $95
+	INC $66
+	BRA .done
+.offY
+	LDA.w #$00E0
+	STA $0801,X
+.offX
+	DEC $85
+.done
+	LDA $79
+	SEC
+	SBC.w #$0004
+	STA $79
+	LDA $66
+	CMP $85
+	BCS +
+	JMP <name>
++
+	PLA
+	JML $C21FAC
+endmacro
+
+%core_special_group_piece(core_special_group_normal_loop, 0)
+%core_special_group_piece(core_special_group_alt_loop, 1)
+
+core_special_group_native:
+	LDA $0066,X
+	LSR
+	JML $C21FB9
+
 ; C2:1D7A's C1:5D22 stream: six rows of twelve bytes, 72 total. Other
 ; sources and shapes retain the retail bitstream decoder. The copy retains
 ; the retail final source/dest pointers, scratch, registers and flags.

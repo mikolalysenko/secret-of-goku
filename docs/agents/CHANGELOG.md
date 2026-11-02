@@ -6,6 +6,10 @@ stay traceable even when they are committed together.
 
 ## SNES Action Grid sprite fix (2026-11-01)
 
+- Fuse the native multipart sprite loop with its piece emitter in binary
+  mode, retaining the retail decimal-mode path. Complete assembled group
+  differentials match, and 720-frame bsnes runs improve Mech Rider 66 -> 59
+  and Mana Beast 227 -> 226 missed field updates.
 - Fix the cold Frieza-state guard's stack corruption. Its inline slow path
   now uses JSR with the guard's RTS and restores the saved accumulator on
   both paths; add an assembled R fast-forward regression for quiet field

@@ -165,6 +165,8 @@ endif
 ; Mounted/multi-part actors use C2's separate three-helper piece emitter.
 ; Inline those calls without changing their clipping, OAM or scratch contract.
 if not(defined("CORE_NATIVE_SPECIAL_SLOW"))
+%orig4($C21FB5, $4A0066BD)
+%hijack($C21FB5, core_native_special_group, 4, core)
 %orig4($C2206D, $0A0A95A5)
 %hijack($C2206D, core_native_special_piece, 4, core)
 %orig4($C22081, $0A0A95A5)
