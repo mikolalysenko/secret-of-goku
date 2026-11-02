@@ -6,17 +6,16 @@ This is the standalone SNES cartridge port of Secret of Goku. Play with
 Goku's punches, ki blasts, Kamehameha, local flight, Instant Transmission
 and Super Saiyan transformation inside Secret of Mana's action RPG.
 
-Version {{VERSION}} brings much more of the browser edition to the cartridge.
-Its later story chapters, set pieces and boss battles now run natively.
-Punches and kicks land with a graded hit stop, impact flashes and a
-camera kick. The sounds were rebuilt around compact samples of the PC
-edition's Kamehameha, Instant Transmission, charging and aura, with
-crunchier hits, whooshing swings and natural variation. The original
-game's weapon-charge sounds no longer play for Goku. To make room for the
-samples, 17 songs use a slightly shorter echo. Ki shots and the charging
-aura no longer turn into damage numbers, and flight no longer gets stuck
-among flowers and trees. Crowded scenes and the largest battles can still
-slow down.
+Version {{VERSION}} fixes the black screen that followed the Mana Beast in
+the good ending, and three boss arenas that could load empty and trap the
+party: Tropicallo's, Fire Gigas's in the Earth Palace and Spikey Tiger's.
+Focus breaks petrification again while companions are present. Blows land
+harder, with a held killing blow, screen shake and longer launches, and
+hits sound louder and crunchier. The Kamehameha fires with a crackling,
+high-voltage roar, Instant Transmission is short and sharp, and charging
+pulses with ki. Crowded fields and most boss battles run more smoothly,
+and beams reach their full length on busy frames. The largest battles,
+especially the Mana Beast, can still slow down.
 
 DOWNLOADS AND SOURCE
 
@@ -90,13 +89,14 @@ Do not assume save states from an older build work after updating.
 KNOWN LIMITATIONS
 
 Dense scenes still have CPU slowdowns, most noticeably while charging
-beams in crowded fields and in the largest battles. In the project's
-gameplay benchmarks the cartridge drops no more frames than the browser
-edition, and the reviewed scenarios have no observed palette mismatches,
-sprite overflow or vblank overruns. The automated suite also checks for
-video-memory writes outside vertical blank and other habits that real
-hardware does not forgive. These measurements do not cover every map,
-scripted scene or physical device.
+beams in crowded fields and in the largest battles, such as Mech Rider
+and the Mana Beast with the full party. The reviewed scenarios have no
+observed palette mismatches or sprite overflow. Automated tests and a
+write probe check for video-memory writes outside vertical blank and
+other habits that real hardware does not forgive; in the full-party Mech
+Rider benchmark some frames' vertical-blank work still runs long, though
+without such writes. These measurements do not cover every map, scripted
+scene or physical device.
 
 Analyzer power readings can briefly hide while crowded scenes or effects
 use the available sprite memory and frame time. Less common status and

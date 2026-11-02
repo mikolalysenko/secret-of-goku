@@ -52,28 +52,33 @@ Update `package.json` and `package-lock.json` to the release version first. Disp
 
 ## Standalone SNES patch
 
-The current [SNES release](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.2.0)
-(0.2.0, October 21, 2026, the first non-preview cartridge release) provides a verified IPS patch, a
+The current [SNES release](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.3.0)
+(0.3.0, November 2, 2026) provides a verified IPS patch, a
 patch-only ZIP, ROM hashes, player instructions and native-resolution
 cartridge screenshots. It is separate from the browser and desktop
 packages. Crowded scenes and the largest battles still slow down;
-physical-console compatibility has not been certified. The first preview
-remains at [`snes-v0.1.0-preview.1`](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.1).
-0.2.0 is published with `--latest=false`, so the desktop `v0.2.x`
+physical-console compatibility has not been certified. Earlier cartridge
+releases remain at [`snes-v0.2.0`](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.2.0)
+and [`snes-v0.1.0-preview.1`](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.1).
+SNES releases are published with `--latest=false`, so the desktop `v0.2.x`
 packages keep GitHub's Latest badge.
 
 The cartridge source and packaging tools are included on `main` under
 [`snes/`](../../snes/). Each published release is pinned to its tag;
-0.2.0's [packager](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.2.0/snes/release.mjs)
-and [performance notes](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.2.0/docs/agents/snes-port/gameplay-performance.md)
-describe that exact release. The release tag is pushed on its own:
+0.3.0's [packager](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.3.0/snes/release.mjs)
+and [performance notes](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.3.0/docs/agents/snes-port/gameplay-performance.md)
+describe that exact release. 0.3.0 was tagged on `combat-polish`, ahead of
+`main`. The release tag is pushed on its own:
 `origin/main` (which deploys Pages) is not moved by an SNES release. Cartridge releases use `snes-v<version>` tags,
 separate from the `v0.2.x` desktop packages. Build a patch-only package with:
 
 ```sh
 node --test snes/test/ips.test.mjs
-node snes/release.mjs --version=0.2.0
+node snes/release.mjs --version=0.3.0
 ```
+
+Run the Mesen suite first; [snes-rom.md](snes-rom.md) covers Mesen2's setup
+on a new or headless machine.
 
 The packager performs a strict cartridge build, generates a standard IPS,
 and checks that both the raw patch and the patch extracted from the ZIP
