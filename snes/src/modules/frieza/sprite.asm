@@ -594,10 +594,10 @@ fz_spr_draw:
 	LDA !fz_spr_fl
 	AND.w #!FZD_BACK
 	BNE .back
-	JSR fz_spr_front
-	BCC .generic
-	RTS
-.generic
+	; fz_spr_front is disconnected: it clobbers X (the mirror bit) before
+	; every fallback, so mirrored Frieza lost his -dx - 16 placement here; its
+	; table strides are half the generated 8/16 bytes, its room test passes
+	; only at exact equality, and its loop stores the slot index as x/y.
 	LDA !fz_t0
 	JSL core_oam_meta_front           ; in front while the front slots last
 	RTS
@@ -609,6 +609,7 @@ fz_spr_draw:
 ; Fully visible main sprite in the foreground: the generated biased offsets
 ; take one add per piece. Return C set after staging every piece, or clear to
 ; keep the generic path (screen edges, insufficient room or back placement).
+; Not called (see fz_spr_draw): fix X, strides, room and x/y before using it.
 fz_spr_front:
 	LDA !fz_t3
 	ASL
