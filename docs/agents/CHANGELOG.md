@@ -4,6 +4,47 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES release: 0.3.1 (2026-11-02)
+
+- Published as a GitHub release:
+  https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.3.1
+  - The annotated tag `snes-v0.3.1` points at b16e85d on `combat-polish`;
+    `main` was fast-forwarded to it at the maintainer's request and Pages
+    redeployed (run 41489305107).
+  - Published with `--latest=false`, so the desktop `v0.2.5` keeps
+    GitHub's Latest badge.
+  - Assets as in 0.3.0: the IPS, the patch-only ZIP, README-SNES.txt,
+    SHA256SUMS and seven 256×224 Mesen captures recaptured from the 0.3.1
+    ROM (pixel-identical to 0.3.0's).
+  - Output ROM SHA-256 `b7047f617958e1cd4dc14e85294e48ad54d86cfec4f72b08061f204210b8dd91`
+    (8,388,608 bytes); IPS SHA-256
+    `a5cfb1bf497ebb5a31b10eeff3d81535c752454d700d37cba60dbbac8533b2d3`
+    (38,060 records); ZIP SHA-256
+    `1ba19493940b090bddecadc888b2cf64a0914b6cb16b108c6ea02f53fa9b733d`.
+- Contents since 0.3.0: the vertical Kamehameha strip warm-up (20c013b)
+  and the Instant Transmission cycling fix below (f9aa9d0).
+- Verification:
+  - `snes/release.mjs` on a clean checkout (`dirty: false`). RomPatcher.js
+    reproduced the ROM byte for byte from the raw IPS, from the IPS in the
+    ZIP and from the IPS downloaded back from the release; the downloads
+    pass SHA256SUMS.
+  - The full Mesen suite on this ROM under both probes: 19 of 20 modules
+    pass. `gameplay` fails only on the known full-party Mech Rider case
+    (16/240 misses, 42 long NMIs, no PPU write outside vblank), the same
+    numbers as 0.3.0. Both probe logs match 0.3.0's: write-probe entries
+    only at the retail `C0:25F6` DMA, core's `hdmaen` test and the
+    test-only hidden-Frieza flyby build.
+  - Unit tests: 253, 251 pass, 2 skipped. Run in parallel,
+    `core/contacts.test.mjs` and `goku/air-attributes.test.mjs` failed with
+    assembler "define not found" errors; both pass alone. Each spawns a
+    reference `snes/build.mjs`, and the concurrent builds share
+    `dist/snes/gen/`. Neither file nor the build changed since 0.3.0, so the
+    race predates this release and does not affect the ROM; it is still
+    open. Browser: `npm test` 392 pass.
+- The Romhacking.net forum reply, hack-entry update and news item were
+  prepared for the maintainer under `.local/romhacking/v0.3.1/`; only the
+  maintainer posts them.
+
 ## SNES Instant Transmission cycling fix (2026-11-02)
 
 Reported after 0.3.0: in early areas Instant Transmission worked once or
