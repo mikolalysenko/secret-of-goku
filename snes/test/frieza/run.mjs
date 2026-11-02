@@ -340,7 +340,8 @@ end
 // land whole and compare the resulting HP with the browser. The imported
 // module and native boss wake in different phases, so hold off the native
 // body's retirement timer during this repeat check rather than comparing
-// wall-frame hit times. Then queue damage at the native consumer
+// wall-frame hit times, and hold the eruption clock after the second hit so
+// a faster (less lagged) fight does not fit a third. Then queue damage at the native consumer
 // (beast-challenge.js, the C0:4053 intercept): 600 takes the cap (110 Super
 // Saiyan, 140 base) and starts the 75-frame grace, nothing lands during it,
 // 50 lands whole, and the eruption's pending damage lands whole. The grace
@@ -369,6 +370,11 @@ function test()
     H.w16(0x7EE6B0, 0) -- isolate the challenge from native retirement
     local h = H.r16(0x7EE182)
     if h ~= hp then drops[#drops + 1] = f .. ':' .. (hp - h) hp = h end
+    -- the eruption clock counts challenge ticks, not video frames: how many
+    -- eruptions fit in 1000 frames follows the fight's lag (a third one at
+    -- tick ~415 fell at frame 1006 before 1f2072c, 959 after). Hold the
+    -- clock off once the second has landed and its burst is over.
+    if #drops >= 2 and H.r8(${v(defs.fzx_bon)}) == 0 then H.w16(${v(defs.fzx_clock)}, 3000) end
   end
   H.result('drops', drops)
   H.result('hpFinal', hp)
