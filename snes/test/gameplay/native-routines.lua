@@ -27,7 +27,7 @@ function profileNative(measuring)
     active[name]=nil
   end
   local function record(name,s)
-    if not RECORD_NATIVE or (name~='emitter' and name~='contact' and name~='body' and name~='overlap') then return end
+    if not RECORD_NATIVE or (name~='emitter' and name~='contact' and name~='body' and name~='overlap' and name~='special') then return end
     counts[name]=(counts[name] or 0)+1
     -- Sample throughout long runs, as well as the initial crowded frames.
     if counts[name]>128 and counts[name]%37~=0 then return end
@@ -63,6 +63,7 @@ function profileNative(measuring)
   start('body_caller',0x80E5CE)
   start('body',NATIVE_BODY,nil,0x80)
   start('emitter',0x80E640)
+  start('special',0xC21FB5,0xC21FAC,0xC2)
   -- The body fallback has already checked capacity and now enters here.
   -- An active invocation ignores subsequent visits within the same loop.
   start('emitter',0x80E649)

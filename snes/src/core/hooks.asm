@@ -155,6 +155,13 @@ if not(defined("CORE_NATIVE_VISIBLE_SLOW"))
 %hijack($C10562, core_native_target_visible, 6, core)
 endif
 
+if not(defined("CORE_NATIVE_SPECIAL_BODY_SLOW"))
+; Special actors' complete backward descriptor/OAM loop. Keep the setup at
+; 1F80/2005 and the caller's accepted-count update at 1FAC untouched.
+%orig4($C21FB5, $4A0066BD)
+%hijack($C21FB5, core_native_special_body, 4, core)
+endif
+
 if not(defined("CORE_NATIVE_SPRITES_SLOW"))
 ; Body/weapon anchor path only. Calls directly into E640 (shadows and
 ; smaller attachments) retain the original emitter without an entry probe.

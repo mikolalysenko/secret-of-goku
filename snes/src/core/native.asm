@@ -979,6 +979,217 @@ core_native_hp_nmi:
 
 incsrc "core-graphics/data.asm"
 
+; C2:1FB5-2004: special actors walk their four-byte descriptors backwards.
+; Inline placement and both attribute/high-table emitters without adding an
+; OAM capacity test. Retail selects one of its two loops from the actor's
+; attribute bit before processing any descriptor. Keep every low OAM word
+; write (including the clipped-Y E0 write), high-table clear/OR order,
+; counters, DP scratch and final registers. Only the proven native M16/X16,
+; D=$0200, DB=$7E binary context takes this path. The saved mode byte is
+; stack-local; no shared scratch or persistent state is introduced.
+macro core_native_special_attributes(operation)
+	LDY.w #$0002
+	LDA ($79),Y
+	STA $9B
+	if <operation> == 0
+		ORA.w #$2000
+	else
+		AND.w #$DFFF
+	endif
+	STA $97
+	LDA $97
+	STA.w $0802,X
+	SEP #$30
+	LDA $95
+	AND.b #$03
+	TAX
+	LDA.l core_native_special_clear,X
+	TAY
+	LDA $95
+	LSR
+	LSR
+	TAX
+	TYA
+	AND.w $0A00,X
+	STA.w $0A00,X
+	LDA $9A
+	ASL
+	BCC ?x_done
+	LDA $95
+	AND.b #$03
+	TAX
+	LDA.l core_native_special_xbit,X
+	TAY
+	LDA $95
+	LSR
+	LSR
+	TAX
+	TYA
+	ORA.w $0A00,X
+	STA.w $0A00,X
+?x_done:
+	LDA $9C
+	BIT.b #$20
+	BEQ ?size_done
+	LDA $95
+	AND.b #$03
+	TAX
+	LDA.l core_native_special_size,X
+	TAY
+	LDA $95
+	LSR
+	LSR
+	TAX
+	TYA
+	ORA.w $0A00,X
+	STA.w $0A00,X
+?size_done:
+	REP #$30
+endmacro
+
+core_native_special_body:
+	PHP
+	REP #$20
+	PHA                          ; M8 fallback also retains hidden accumulator B
+	PHD
+	PHB
+	REP #$30
+	LDA $06,S
+	AND.w #$0038                 ; decimal, M8 or X8: retail semantics
+	BEQ +
+	JMP .retail
++	LDA $02,S
+	CMP.w #$0200
+	BEQ +
+	JMP .retail
++	LDA $01,S
+	AND.w #$00FF
+	CMP.w #$007E
+	BEQ +
+	JMP .retail
++	PLB
+	PLD
+	PLA
+	PLP
+	LDA.w $0066,X
+	LSR
+	EOR.w #$FFFF
+	CLC
+	ADC $91
+	STA $91
+	LDA $85
+	DEC
+	STA $97
+	ASL
+	ASL
+	CLC
+	ADC $79
+	STA $79
+	LDA.w $0070,X
+	BIT.w #$0008
+	PHP                          ; retain the retail loop's attribute variant
+.loop
+	LDA $95
+	ASL
+	ASL
+	TAX
+	; C2:2095, signed X placement and its exact wrapped clipping tests.
+	LDA ($79)
+	AND.w #$00FF
+	BIT.w #$0080
+	BEQ +
+	ORA.w #$FF00
++	CLC
+	ADC $8F
+	STA $97
+	CLC
+	ADC.w #$0020
+	BPL +
+	JMP .advance_rejected
++	SEC
+	SBC.w #$0120
+	BMI +
+	JMP .advance_rejected
++	LDA $97
+	STA.w $0800,X
+	STA $99
+	; C2:20C0, including the second unaligned word write on Y rejection.
+	LDA ($79)
+	AND.w #$FF00
+	BPL +
+	ORA.w #$00FF
++	XBA
+	CLC
+	ADC $91
+	STA $97
+	CLC
+	ADC.w #$0020
+	BPL +
+	JMP .y_rejected
++	SEC
+	SBC.w #$0100
+	BMI +
+	JMP .y_rejected
++	LDA $97
+	STA.w $0801,X
+	LDA $01,S
+	AND.w #$0002
+	BEQ .and_attributes
+	%core_native_special_attributes(0)
+	BRA .emitted
+.and_attributes
+	%core_native_special_attributes(1)
+.emitted
+	INC $95
+	INC $66
+	BRA .advance
+.y_rejected
+	LDA.w #$00E0
+	STA.w $0801,X
+.advance_rejected
+	DEC $85
+.advance
+	LDA $79
+	SEC
+	SBC.w #$0004
+	STA $79
+	LDA $66
+	CMP $85
+	BCS +
+	JMP .loop
++	BVS .overflow
+	PLP                          ; discard the saved mode, then retail's RTS
+	PLA                          ; consumed the original JSR return
+	LDA $66
+	CMP $85
+	JML $C21FAC
+.overflow
+	PLP
+	PLA
+	LDA $79                      ; reproduce the final pointer SBC's overflow
+	CLC
+	ADC.w #$0004
+	SEC
+	SBC.w #$0004
+	LDA $66
+	CMP $85
+	JML $C21FAC
+.retail
+	PLB
+	PLD
+	PLA
+	PLP
+	LDA.w $0066,X
+	LSR
+	JML $C21FB9                  ; 1FB8 is the hook's final byte, not retail LSR
+
+core_native_special_clear:
+	db $FC,$F3,$CF,$3F
+core_native_special_xbit:
+	db $01,$04,$10,$40
+core_native_special_size:
+	db $02,$08,$20,$80
+
 ; Native body/weapon anchor and pieces: add packed coordinates for interior
 ; assemblies. Direct emitter calls (including small shadows) are unchanged.
 ; Small lists, edge anchors, decimal mode and offsets outside -32..31 use
