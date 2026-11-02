@@ -1145,8 +1145,6 @@ endif
 	TYA
 	AND $0A00,X
 	STA $0A00,X
-	LDA $9C
-	BIT.b #$20
 	BRA .accepted
 .packedHigh
 	LDA $95
@@ -1180,8 +1178,6 @@ endif
 	LDA.l $D97F2D,X
 	TYX
 	TAY
-	LDA $9C
-	BIT.b #$20
 .accepted
 	REP #$30
 	INC $95

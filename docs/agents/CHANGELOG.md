@@ -6,6 +6,10 @@ stay traceable even when they are committed together.
 
 ## SNES Action Grid sprite fix (2026-11-01)
 
+- Remove two flag-only loads from the fused multipart emitter's small-piece
+  paths; the caller already overwrites those results. All assembled group
+  differentials match and boss timing is unchanged at Rider 13/240 and
+  Beast 71/240.
 - Unroll the remaining 72-byte Beast graphics copy, reducing its exact
   decode from 1,704 to 1,354 CPU cycles; the bsnes result remains 71/240.
 - Fuse the Beast's 96-byte native add and pack passes and replace its

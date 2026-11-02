@@ -2077,3 +2077,8 @@ three scripts; Rider remains 13/240.
 The remaining 72-byte C1:5D22 copy now unrolls its 12-byte rows. Full
 decoder differentials still match and its runtime cost falls from 1,704 to
 1,354 CPU cycles; this does not further change the 71/240 Beast result.
+
+The fused multipart emitter also skips two accumulator/flag restorations
+that its caller overwrites anyway. The large-sprite mask needed for final Y
+is retained. Complete assembled differentials match, while the real-input
+results remain Rider 13/240 and Beast 71/240.
