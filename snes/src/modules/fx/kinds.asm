@@ -1814,6 +1814,14 @@ endif
 	BCC +
 	LDA.w #360
 +	STA !fxw_lim
+if not(defined("FX_EDGE_BUDGET_OFF"))
+	LDA !d_dy                    ; left / right behind the natives, field
+	ORA !d_ef                    ; size: a side at a time, in its lines' room
+	ORA !d_size
+	BNE +
+	JMP fx_wave_rows
++
+endif
 	LDA.w #$0000
 	STA.l !fxw_pass
 .pass
@@ -2033,3 +2041,394 @@ endif
 	dw !FX_SG_IMPACT_SPARK, !FX_SG_GOLD_SPARK
 .arc
 	dw !FX_SG_LIGHTNING, !FX_SG_GOLD_ARC
+
+if not(defined("FX_EDGE_BUDGET_OFF"))
+; Left / right wave edges behind the natives (FX_EDGE_BUDGET_OFF: the two
+; passes above, the previous cartridge byte for byte). They are two rows of
+; cells, up to ten across the screen each, and the PPU fetches a crowded
+; line's slivers from its last sprite back: these rows take theirs before
+; any native's. At a wave's start and end the rows lie on Goku's own lines
+; (fight-ssj: 40 slivers there, two lines of his body blank for a frame).
+; fx_wave_room gives each side the cells its lines have room for; the cells
+; are then the passes' own (distances, cells, turns, radii, clipping), drawn
+; a side at a time from the palms out until that room is used: the far end
+; goes first. A side's cells lie 28 px apart and never overlap, and every
+; lower cell still comes before its upper one in OAM, so the picture is the
+; passes'. One stamp resolution per cell kind and a short loop per cell
+; replace the passes' twelve fx_emit_run calls (their set-up and steps were
+; about 25 lines of every wave frame).
+!fxr_sw   = !d_tiles+$00         ; the spark's OAM word ($FFFF: not shown)
+!fxr_so   = !d_tiles+$02         ; its offsets (x + 128 | y + 128 << 8)
+!fxr_aw   = !d_tiles+$04         ; every third cell's (Thunderbolt / gold arc)
+!fxr_ao   = !d_tiles+$06
+!fxr_nb   = !d_tiles+$08         ; fx_wave_room: the lower side's room (cells)
+!fxr_nt   = !d_tiles+$0A         ;   and the upper side's
+!fxr_left = !d_tiles+$0C         ; cells this side may still add
+!fxr_up   = !d_tiles+$0E         ; 0 the lower side (+r), nonzero the upper (-r)
+!fxr_d    = !d_tiles+$10         ; distance along the beam
+!fxr_k    = !d_tiles+$12         ; (floor(d / 28) + phase) % 3: 0 the third cell
+!fxr_xa   = !d_tiles+$14         ; the axis's x at d
+!fxr_step = !d_tiles+$16         ; 28 along x, signed
+!fxr_w    = !d_tiles+$18         ; this cell's OAM word
+!fxr_o    = !d_tiles+$1A         ; and offsets
+fx_wave_rows:
+	LDA.w #$FFFF                 ; (!d_tiles is scratch here)
+	STA !d_lasta
+	LDA !fxw_ph                  ; d0 = 18 + 7 * (phase & 3), as .pass
+	AND.w #$0003
+	STA !fxw_d
+	ASL
+	ASL
+	ASL
+	SEC
+	SBC !fxw_d
+	CLC
+	ADC.w #18
+	STA !fxw_d
+	CMP !fxw_lim
+	BCC +
+	RTS                          ; no cell below the length
++	CMP.w #28                    ; k0 = (floor(d0 / 28) + phase) % 3
+	LDA.w #$0000
+	ROL
+	CLC
+	ADC !fxw_ph
+	STA.l $004204
+	SEP #$20
+	LDA.b #3
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	STA !fxw_k
+	LDA.l !fxw_hw                ; r: past the taper
+	SEC
+	SBC.w #2
+	BPL +
+	LDA.w #$0000
++	STA !fxw_r
+	JSR fx_wave_room
+	LDA.l !fxw_gold              ; the two cells, as the passes set them up
+	TAX
+	LDA.l fx_wave_edges_spark,X
+	JSR fx_wave_stamp
+	STA !fxr_sw
+	STX !fxr_so
+	LDA.l !fxw_gold
+	TAX
+	LDA.l fx_wave_edges_arc,X
+	JSR fx_wave_stamp
+	STA !fxr_aw
+	STX !fxr_ao
+	LDA.w #28
+	LDX !d_dx
+	BPL +
+	LDA.w #-28
++	STA !fxr_step
+	LDA !fxr_nb                  ; the lower side, then the upper
+	STA !fxr_left
+	STZ !fxr_up
+	JSR .side
+if defined("FX_TEST")
+	JSR fx_test_vline
+	STA.l !FXT_BOX+$BE           ; after the first side
+endif
+	LDA !fxr_nt
+	STA !fxr_left
+	INC !fxr_up
+.side
+	LDA !fxr_left
+	BNE +
+	RTS
++	LDA !fxw_d
+	STA !fxr_d
+	LDA !fxw_k
+	STA !fxr_k
+	LDA !d_cur+!C_X
+	LDX !d_dx
+	BMI +
+	CLC
+	ADC !fxr_d
+	BRA ++
++	SEC
+	SBC !fxr_d
+++	STA !fxr_xa
+.cell
+	LDA !fxr_k                   ; the third cell, or a spark
+	BNE +
+	LDA !fxr_aw
+	LDX !fxr_ao
+	BRA ++
++	LDA !fxr_sw
+	LDX !fxr_so
+++	CMP.w #$FFFF
+	BNE +
+	JMP .next                    ; not shown this frame: no room used
++	STA !fxr_w
+	STX !fxr_o
+	LDA !fxr_d                   ; radius: the taper's, else r
+	CMP.l !fxw_dt
+	BCS .full
+	CLC                          ; hw * (d + 8) / taper - 2, as .taper
+	ADC.w #8
+	TAX
+	SEP #$20
+	LDA.l !fxw_hw
+	STA.l $004202
+	TXA
+	STA.l $004203
+	NOP
+	NOP
+	NOP
+	NOP
+	REP #$20
+	LDA.l $004216
+	STA.l $004204
+	SEP #$20
+	LDA.l !fxw_t
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004214
+	SEC
+	SBC.w #2
+	BPL .radius
+	LDA.w #$0000
+	BRA .radius
+.full
+	LDA !fxw_r
+.radius
+	LDX !fxr_up
+	BEQ +
+	EOR.w #$FFFF                 ; above the axis
+	INC
++	CLC
+	ADC !d_cur+!C_Y
+	STA !d_y                     ; the cell's anchor
+	LDA !fxr_o                   ; screen y: on the screen, or the cell is
+	XBA                          ; culled as the passes' slow path does
+	AND.w #$00FF
+	SEC
+	SBC.w #128
+	CLC
+	ADC !d_y
+	STA !d_sy
+	CLC
+	ADC.w #15
+	CMP.w #224+15
+	BCC +
+	LDA !fxr_d                   ; past the taper the rest share its row
+	CMP.l !fxw_dt
+	BCC .next
+	RTS
++	LDA !fxr_o                   ; screen x
+	AND.w #$00FF
+	SEC
+	SBC.w #128
+	CLC
+	ADC !fxr_xa
+	STA !d_sx
+	CLC
+	ADC.w #15
+	CMP.w #256+15
+	BCC .show
+	LDA !d_sx                    ; off the screen: past the edge the beam
+	EOR !fxr_step                ; heads for (same sign), so are the rest
+	BMI .next
+	RTS
+.show
+	LDX.w !core_oam_cursor&$FFFF ; behind the natives, as fx_emit_place /
+	CPX !d_end                   ; fx_emit_slow: no room, no more cells
+	BCC +
+	RTS
++	SEP #$20
+	LDA !d_sx
+	STA.w $0800,X
+	LDA !d_sy
+	STA.w $0801,X
+	REP #$20
+	LDA !fxr_w
+	STA.w $0802,X
+	LDA !d_sx
+	BPL +
+	JSR fx_hibits                ; X bit 8 (field size)
++	TXA
+	CLC
+	ADC.w #4
+	STA.w !core_oam_cursor&$FFFF
+	DEC !fxr_left
+	BNE .next
+	RTS
+.next
+	LDA !fxr_d                   ; the next cell on the 28 px grid
+	CLC
+	ADC.w #28
+	STA !fxr_d
+	CMP !fxw_lim
+	BCC +
+	RTS
++	LDA !fxr_xa
+	CLC
+	ADC !fxr_step
+	STA !fxr_xa
+	LDA !fxr_k
+	INC
+	CMP.w #3
+	BCC +
+	LDA.w #$0000
++	STA !fxr_k
+	JMP .cell
+
+; Stamp group A at the wave's frame (phase & 1) and turn -> A = its cell's
+; OAM word, flips included ($FFFF: not shown this frame), X = its offsets
+; (fx_stamp_cell's set-up).
+fx_wave_stamp:
+	PHA
+	LDA !fxw_ph
+	AND.w #$0001
+	TAX
+	PLA
+	LDY !d_turn
+	JSR fx_stamp_id
+	ASL
+	ASL
+	TAX
+	LDA.l fx_stamp_cells+2,X
+	PHA
+	LDA.l fx_stamp_cells,X
+	CMP.w #$FFFF
+	BEQ .none
+	PHA
+	JSR fx_resolve
+	CMP.w #$FFFF
+	BEQ .gone
+	STA !d_tile
+	PLA
+	AND.w #$C000
+	ORA !d_tile
+	PLX
+	RTS
+.gone
+	PLA
+.none
+	PLX
+	LDA.w #$FFFF
+	RTS
+
+; The cells each side of a left / right wave may add (!fxr_nt / !fxr_nb):
+; its lines' room, 34 - 2 spare - the slivers already there (fx_lines_load),
+; / 2. A side's cells, from the first taper cell's radius r' to the runs'
+; r, lie on lines C_Y - r - 8 to C_Y - r' + 8 (the stamps sit 8 or 7 lines
+; above their anchor; mirrored below). With r' < 9 both sides meet on the
+; axis and share one band and its room. In: !fxw_d = d0, !fxw_r = r.
+fx_wave_room:
+	LDA !fxw_r                   ; r' = r unless the first cell is in the taper
+	STA !fxw_x
+	LDA !fxw_d
+	CMP.l !fxw_dt
+	BCS .bands
+	CLC                          ; hw * (d0 + 8) / taper - 2, as .taper
+	ADC.w #8
+	TAX
+	SEP #$20
+	LDA.l !fxw_hw
+	STA.l $004202
+	TXA
+	STA.l $004203
+	NOP
+	NOP
+	NOP
+	NOP
+	REP #$20
+	LDA.l $004216
+	STA.l $004204
+	SEP #$20
+	LDA.l !fxw_t
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004214
+	SEC
+	SBC.w #2
+	BPL +
+	LDA.w #$0000
++	STA !fxw_x
+.bands
+	LDA !d_cur+!C_Y              ; the upper side's first line
+	SEC
+	SBC !fxw_r
+	SEC
+	SBC.w #8
+	STA !fl_a
+	LDA !fxw_x
+	CMP.w #9
+	BCC .shared
+	LDA !fxw_r                   ; apart: r - r' + 17 lines a side
+	SEC
+	SBC !fxw_x
+	CLC
+	ADC.w #17
+	STA !fl_ah
+	STA !fl_bh
+	LDA !d_cur+!C_Y
+	CLC
+	ADC !fxw_x
+	SEC
+	SBC.w #8
+	STA !fl_b
+	JSR fx_lines_load
+	LDA !fl_na
+	JSR .room
+	STA !fxr_nt
+	LDA !fl_nb
+	JSR .room
+	STA !fxr_nb
+	RTS
+.shared                          ; one band, C_Y - r - 8 to C_Y + r + 8: both
+	LDA !fxw_r                   ; sides' cells count on its lines
+	ASL
+	CLC
+	ADC.w #17
+	STA !fl_ah
+	STZ !fl_bh
+	JSR fx_lines_load
+	LDA !fl_na
+	JSR .room
+	CMP.w #$00FF
+	BEQ +
+	LSR
++	STA !fxr_nt
+	STA !fxr_nb
+	RTS
+; A = sprites on a band (16-pixel units) -> the cells it may add, 16 - A
+; (32 slivers: two spare), none below 0; $FF when the band carries no
+; sprite: only FX's own cells would share its lines.
+.room
+	BNE +
+	LDA.w #$00FF
+	RTS
++	EOR.w #$FFFF
+	SEC
+	ADC.w #16
+	BPL +
+	LDA.w #$0000
++	RTS
+endif

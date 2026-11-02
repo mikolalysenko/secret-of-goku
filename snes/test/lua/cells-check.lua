@@ -27,8 +27,10 @@
 -- that lies on the screen is written (auraPartial counts the frames that
 -- miss one, a cut-off top row included), and once displayed none of its
 -- sprites loses a line to the PPU's 32 sprites / 34 slivers per line
--- (evaluation from the rotated first sprite, slivers fetched in reverse:
--- auraDropped).
+-- (evaluation from the PPU's rotated first sprite, slivers fetched in
+-- reverse: auraDropped). With PUSH_CHECK set, fxPushed counts the frames
+-- where FX's own sprites cost another sprite (a native, Goku, a readout,
+-- the aura) slivers on a line where those others alone would fit.
 -- Needs SYM: core_field_frame, core_field_nmi_done, fx_k_aura_obj,
 -- fx_draw_current, fx_run_slots, fx_entry_tile, fx_entry_vram, fx_cell_dma;
 -- for the whole-aura check also fx_aura_rows, fx_aura_asm_id, fx_asm_ptr,
@@ -45,7 +47,7 @@ local pending, displayed = nil, nil
 local auraStart, auraOpen, auraTiles = nil, false, {}
 local auraAsm, auraId, auraDrawn = {}, nil, false
 local cellRow = {}                      -- aura cell -> its row in its flame (0 top)
-local stats = {frames=0,checked=0,auraFrames=0,auraBad=0,auraBadRows={0,0,0},auraDrawn=0,auraPartial=0,auraDropped=0,fxBad=0,fxLate=0,uiBad=0,
+local stats = {frames=0,checked=0,auraFrames=0,auraBad=0,auraBadRows={0,0,0},auraDrawn=0,auraPartial=0,auraDropped=0,fxPushed=0,fxBad=0,fxLate=0,uiBad=0,
   uiFrames=0,bothFrames=0,nativeBad=0,nativeLate=0,freeRefs=0,nativeWrites=0,nativeWritesHeld=0,
   regionAWrites=0,lag=0,shots=0,fxForeign=0,fxShown=0,fxClaimed=0,numbers=0,slot5Numbers=0,formChanges=0,gokuHits=0}
 local details = {}
@@ -287,13 +289,19 @@ hook(SYM.core_field_nmi_done, function()
       end
     end
   end
-  if aura then
-    stats.auraFrames = stats.auraFrames + 1
+  if aura then stats.auraFrames = stats.auraFrames + 1 end
+  if aura or PUSH_CHECK then
     -- The PPU per line: the first 32 sprites in evaluation order (from the
     -- rotated first sprite), then 34 slivers fetched from the last of them.
-    local first = H.r8(0x317497)
-    first = (first & 0x80 ~= 0) and (first & 0x7F) or 0
-    local spr, lines = {}, {}
+    -- The rotation is the PPU's own, from the last upload's OAMADD: a lag
+    -- vblank keeps that upload's OAM and rotation on screen, while the next
+    -- frame's commit may already have rewritten !core_oam_first in SRAM
+    -- (fight-ssj, frame 354: the commit ran 4 lines before the vblank, the
+    -- frame ended 4 lines after it; SRAM said slot 29, the PPU used 35, and
+    -- reading SRAM here cut a flame line that the screen showed whole).
+    local st = emu.getState()
+    local first = st['ppu.enableOamPriority'] and ((st['ppu.oamRamAddress'] >> 1) & 127) or 0
+    local perLine, auraLines, fxLines = {}, {}, {}
     for k = 0, 127 do
       local i = (first + k) & 127
       local hi = (H.oam(512 + (i >> 2)) >> ((i & 3) * 2)) & 3
@@ -301,34 +309,69 @@ hook(SYM.core_field_nmi_done, function()
       local size = (hi & 2) ~= 0 and 32 or 16
       local cols = 0
       for xx = x, x + size - 1, 8 do if xx + 8 > 0 and xx < 256 then cols = cols + 1 end end
-      local attr = H.oam(i * 4 + 3)
-      local t = H.oam(i * 4 + 2) | ((attr & 1) << 8)
-      local isAura = i >= displayed.native and displayed.aura[t] and tileEntry[t] ~= nil
-      spr[#spr + 1] = {y=H.oam(i * 4 + 1), size=size, cols=cols, aura=isAura}
-      if isAura then
+      if cols > 0 then
+        local attr = H.oam(i * 4 + 3)
+        local t = H.oam(i * 4 + 2) | ((attr & 1) << 8)
+        local e = i >= displayed.native and tileEntry[t] or nil
+        local isAura = e ~= nil and displayed.aura[t] and true or false
+        -- FX's own sprites: its cache cells outside the native slots (not a
+        -- UI lease, not the aura).
+        local isFx = e ~= nil and not isAura and displayed.owner[e] < 0x200
+        local sp = {cols=cols, aura=isAura, fx=isFx}
         local y = H.oam(i * 4 + 1)
-        for d = 0, size - 1 do local yy = (y + d) & 255; if yy < 224 then lines[yy] = true end end
-      end
-    end
-    local dropped = nil
-    for yy in pairs(lines) do
-      local inRange = {}
-      for _, sp in ipairs(spr) do
-        if sp.cols > 0 and ((yy - sp.y) & 255) < sp.size then
-          if #inRange < 32 then inRange[#inRange + 1] = sp
-          elseif sp.aura then dropped = dropped or yy end
+        for d = 0, size - 1 do
+          local yy = (y + d) & 255
+          if yy < 224 then
+            local l = perLine[yy]
+            if not l then l = {}; perLine[yy] = l end
+            l[#l + 1] = sp
+            if isAura then auraLines[yy] = true end
+            if isFx then fxLines[yy] = true end
+          end
         end
       end
+    end
+    -- A sprite loses slivers past the 32 in range or once 34 are fetched.
+    local function losers(l, which)
+      local lost = false
+      for k = 33, #l do if which(l[k]) then lost = true end end
       local left = 34
-      for k = #inRange, 1, -1 do
-        local sp = inRange[k]
-        if sp.aura and left < sp.cols then dropped = dropped or yy end
+      for k = math.min(32, #l), 1, -1 do
+        local sp = l[k]
+        if which(sp) and left < sp.cols then lost = true end
         left = math.max(0, left - sp.cols)
       end
+      return lost
     end
-    if dropped then
-      stats.auraDropped = stats.auraDropped + 1
-      note('aura-drop', {line=dropped})
+    if aura then
+      local dropped = nil
+      for yy in pairs(auraLines) do
+        if losers(perLine[yy], function(sp) return sp.aura end) then dropped = dropped or yy end
+      end
+      if dropped then
+        stats.auraDropped = stats.auraDropped + 1
+        note('aura-drop', {line=dropped})
+      end
+    end
+    -- PUSH_CHECK: FX's sprites never cost another sprite (a native, Goku, a
+    -- readout, the aura) slivers on a line where those alone would fit.
+    if PUSH_CHECK then
+      local pushed = nil
+      for yy in pairs(fxLines) do
+        local l = perLine[yy]
+        if losers(l, function(sp) return not sp.fx end) then
+          local n, sum, all = 0, 0, 0
+          for _, sp in ipairs(l) do
+            all = all + sp.cols
+            if not sp.fx then n = n + 1; sum = sum + sp.cols end
+          end
+          if n <= 32 and sum <= 34 and not pushed then pushed = {line=yy, slivers=all, others=sum} end
+        end
+      end
+      if pushed then
+        stats.fxPushed = stats.fxPushed + 1
+        note('fx-push', pushed)
+      end
     end
   end
   if ui then stats.uiFrames = stats.uiFrames + 1 end

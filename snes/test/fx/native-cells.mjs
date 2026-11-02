@@ -12,7 +12,11 @@
 // whose cell FX allocates first (region A): the reported "top of the aura
 // cut off". Every drawn aura must also be whole: all parts of its flame on
 // the screen written and none dropped by the PPU's per-line limits, also
-// while `fight-top` sweeps it across the screen top.
+// while `fight-top` sweeps it across the screen top. FX's own sprites must
+// never cost another sprite (a native, Goku, a readout, the aura) slivers
+// on a line where those alone fit the PPU's 32 sprites / 34 slivers
+// (fxPushed: a thin wave's edge rows on Goku's lines in `fight-ssj` before
+// fx_wave_room).
 // The maintainer's later reports: ki shots turned into numbers when a held
 // ki barrage killed an enemy (`barrage-kill`, base and Super Saiyan: the
 // barrage kills the Rabite in slot 5 while more shots fly, and its damage
@@ -66,16 +70,18 @@ const scenes=[
   ['barrage-kill-ssj',B,1,barrage,true,'',{aura:false,slot5Numbers:1,fxClaimed:20}],
   ['ssj-charge',A,0,ssjCharge,false,'',{formChanges:1,gokuHits:1}],
   ['revert-charge',A,0,revertCharge,false,'',{formChanges:2,gokuHits:1}],
-  // Its crowded first charge (flame, lightning, gold sparks, the party) can
-  // pass the PPU's 34 slivers on a line: one flame line dropped for one
-  // frame (frame 796, line 166 on 431c1b3). Reported, not yet asserted.
-  ['ssj-kill-charge',B,0,ssjKill,true,'',{formChanges:1,slot5Numbers:1,fxClaimed:20,lineLimit:false}],
+  // Its crowded first charge (flame, lightning, gold sparks, the party)
+  // passes the PPU's 34 slivers on Goku's lines: FX's own front sprites
+  // (lightning, the orb) lose theirs, the flame keeps its. (The flame line
+  // this scene used to report, frame 796, was the checker reading the next
+  // frame's rotation in a lag vblank: cells-check.lua.)
+  ['ssj-kill-charge',B,0,ssjKill,true,'',{formChanges:1,slot5Numbers:1,fxClaimed:20}],
 ];
 const summary=[];
 for(const [name,bundle,form,script,conflict,extra='',needs={}] of scenes){
   if(process.env.NATIVE_SCENES&&!process.env.NATIVE_SCENES.split(',').includes(name))continue;
   const copy=privateRom(rom,'native-cells-'+name);
-  const pre=`BUNDLE=${JSON.stringify(join(mainCheckout(),'.local/snes-import',bundle))}\nFORM=${form}\nSETUP=""\nSCRIPT=${JSON.stringify(script)}\nSHOTS=4\nSYM={${Object.entries(SYM).map(([n,a])=>`${n}=${a}`).join(',')}}\n${extra.replace(/\\n/g,'\n')}\n`;
+  const pre=`BUNDLE=${JSON.stringify(join(mainCheckout(),'.local/snes-import',bundle))}\nFORM=${form}\nSETUP=""\nSCRIPT=${JSON.stringify(script)}\nSHOTS=4\nPUSH_CHECK=true\nSYM={${Object.entries(SYM).map(([n,a])=>`${n}=${a}`).join(',')}}\n${extra.replace(/\\n/g,'\n')}\n`;
   let r;
   try{r=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test:pre+readFileSync(join(import.meta.dirname,'../lua/cells-check.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'native-cells.lua'),'utf8'),outDir:join(root,name),exactFrames:true});}
   finally{cleanupRom(copy);}
@@ -86,10 +92,10 @@ for(const [name,bundle,form,script,conflict,extra='',needs={}] of scenes){
   const exercised=(!conflict||(v.regionAWrites>0&&v.nativeWritesHeld>0))&&!missing.length;
   const aura=needs.aura!==false;
   const whole=v.auraPartial===0&&(needs.lineLimit===false||v.auraDropped===0)&&(!aura||v.auraDrawn>=40);
-  const pass=v.auraBad===0&&v.fxBad===0&&v.fxForeign===0&&v.uiBad===0&&v.nativeBad===0&&v.freeRefs===0&&(!aura||v.auraFrames>=40)&&exercised&&whole;
-  const row={name,pass,...Object.fromEntries(['frames','checked','auraFrames','auraBad','auraBadRows','auraDrawn','auraPartial','auraDropped','fxBad','fxLate','fxForeign','fxShown','fxClaimed','uiBad','uiFrames','nativeBad','freeRefs','nativeLate','nativeWrites','nativeWritesHeld','regionAWrites','numbers','slot5Numbers','formChanges','gokuHits','lag'].map(k=>[k,v[k]])),details:(v.details??[]).slice(0,8)};
+  const pass=v.auraBad===0&&v.fxBad===0&&v.fxForeign===0&&v.fxPushed===0&&v.uiBad===0&&v.nativeBad===0&&v.freeRefs===0&&(!aura||v.auraFrames>=40)&&exercised&&whole;
+  const row={name,pass,...Object.fromEntries(['frames','checked','auraFrames','auraBad','auraBadRows','auraDrawn','auraPartial','auraDropped','fxPushed','fxBad','fxLate','fxForeign','fxShown','fxClaimed','uiBad','uiFrames','nativeBad','freeRefs','nativeLate','nativeWrites','nativeWritesHeld','regionAWrites','numbers','slot5Numbers','formChanges','gokuHits','lag'].map(k=>[k,v[k]])),details:(v.details??[]).slice(0,8)};
   summary.push(row);
-  console.log(`${name}: ${pass?'pass':'FAIL'}; aura ${v.auraFrames} frames, ${v.auraBad} wrong aura sprites (rows top/middle/bottom ${(v.auraBadRows??[]).join('/')}); ${v.auraDrawn} flames built, ${v.auraPartial} partial, ${v.auraDropped} cut by the line limits; stale FX ${v.fxBad} of ${v.fxShown} shown (${v.fxClaimed} while the game claims region A), UI ${v.uiBad}, native ${v.nativeBad}, free ${v.freeRefs}; late FX uploads ${v.fxLate} (${v.fxForeign} over the game's or UI's pixels), game sprites before their stream ${v.nativeLate}; game writes on cache tiles ${v.nativeWrites} (${v.nativeWritesHeld} while held, region A ${v.regionAWrites}); ${v.numbers} killed (${v.slot5Numbers} in slot 5), ${v.formChanges} form changes, ${v.gokuHits} hits on Goku${exercised?'':` (not exercised${missing.length?': '+missing.join(', '):''})`}`);
+  console.log(`${name}: ${pass?'pass':'FAIL'}; aura ${v.auraFrames} frames, ${v.auraBad} wrong aura sprites (rows top/middle/bottom ${(v.auraBadRows??[]).join('/')}); ${v.auraDrawn} flames built, ${v.auraPartial} partial, ${v.auraDropped} cut by the line limits; ${v.fxPushed} frames where FX cost another sprite slivers; stale FX ${v.fxBad} of ${v.fxShown} shown (${v.fxClaimed} while the game claims region A), UI ${v.uiBad}, native ${v.nativeBad}, free ${v.freeRefs}; late FX uploads ${v.fxLate} (${v.fxForeign} over the game's or UI's pixels), game sprites before their stream ${v.nativeLate}; game writes on cache tiles ${v.nativeWrites} (${v.nativeWritesHeld} while held, region A ${v.regionAWrites}); ${v.numbers} killed (${v.slot5Numbers} in slot 5), ${v.formChanges} form changes, ${v.gokuHits} hits on Goku${exercised?'':` (not exercised${missing.length?': '+missing.join(', '):''})`}`);
   if(!pass)for(const d of row.details)console.log('  ',JSON.stringify(d));
 }
 writeFileSync(join(root,'summary.json'),JSON.stringify(summary,null,2));

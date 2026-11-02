@@ -1545,3 +1545,392 @@ fx_row_room:
 	ADC.w #2
 +	STA !fr_n
 ++	RTS
+
+if not(defined("FX_EDGE_BUDGET_OFF"))
+; Sprites already on two bands of OAM lines, for a row of FX sprites behind
+; the natives (the wave's edges, fx_wave_room). The PPU fetches a crowded
+; line's slivers from its last sprite back: sprites behind the natives
+; first, then the natives, the rotated front group last. A row behind the
+; natives therefore takes its slivers before any native and may add only
+; what leaves every native, Goku and the aura theirs. Counted: every sprite
+; in OAM below the cursor (natives, modules, FX's own so far) and the front
+; sprites other modules staged; FX's own front sprites are fetched last and
+; lose their slivers first. A sprite counts on a band when any of its lines
+; is in it (an overestimate: they need not share one line). Lines are OAM Y
+; lines (a sprite at Y covers Y to Y + 15, Y + 31 when large, wrapping past
+; 255), bands clipped to 0-222; hidden sprites ($E0) lie below them.
+;   In:  !fl_a / !fl_ah band A's first line (signed) and height (0: none),
+;        !fl_b / !fl_bh band B.
+;   Out: !fl_na / !fl_nb sprites on each, in 16-pixel units (large: 2).
+; M16/X16 in and out; uses !d_tmp and !d_r0.
+; A sprite at Y is on band [f, e) when (Y + 16) & 255 (Y + 32 when large)
+; lies in [f + 1, e + 16) ([f + 1, e + 32)): one unsigned range, never
+; wrapping, near the screen top too. Eight slots at a time; a group's
+; size bits are read once, and only a group with a large sprite tests sizes.
+!fl_a   = !d_tmp+0
+!fl_ah  = !d_tmp+2
+!fl_b   = !d_tmp+4
+!fl_bh  = !d_tmp+6
+!fl_la  = !d_tmp+0               ; bytes once set up, per band: f + 1, e + 16,
+!fl_ea  = !d_tmp+1               ;   e + 32 (all 0: no band)
+!fl_ea2 = !d_tmp+2
+!fl_lb  = !d_tmp+4
+!fl_eb  = !d_tmp+5
+!fl_eb2 = !d_tmp+6
+!fl_na  = !d_r0+0
+!fl_nb  = !d_r0+2
+!fl_end = !d_r0+4                ; loop end (and set-up scratch)
+!fl_grp = !d_r0+6                ; end of the whole groups of eight slots; then
+                                 ;   the last slots' size bits
+; A band's three bytes at <out> from its words <first>, <height> (read first).
+macro fx_fl_band(first, height, out)
+	LDX <first>
+	LDA <height>
+	JSR fx_fl_clip               ; X = first line, A = height (Z: none)
+	STA !fl_end
+	SEP #$20
+	BEQ ?none
+	TXA
+	INC
+	STA <out>+0                  ; f + 1
+	CLC
+	ADC !fl_end
+	CLC
+	ADC.b #15
+	STA <out>+1                  ; e + 16
+	CLC
+	ADC.b #16
+	STA <out>+2                  ; e + 32
+	BRA ?done
+?none:
+	STZ <out>+0
+	STZ <out>+1
+	STZ <out>+2
+?done:
+	REP #$20
+endmacro
+; A small sprite, 8-bit A, X = its group's first OAM offset: band A alone
+; (8-bit counts: at most 128 units below the cursor), or both.
+macro fx_fl_one(j)
+	LDA.w $0801+(<j>*4),X
+	CLC
+	ADC.b #16
+	CMP !fl_la
+	BCC ?done
+	CMP !fl_ea
+	BCS ?done
+	INC !fl_na
+?done:
+endmacro
+macro fx_fl_two(j)
+	LDA.w $0801+(<j>*4),X
+	CLC
+	ADC.b #16
+	CMP !fl_la
+	BCC ?b
+	CMP !fl_ea
+	BCS ?b
+	INC !fl_na
+?b:
+	CMP !fl_lb
+	BCC ?done
+	CMP !fl_eb
+	BCS ?done
+	INC !fl_nb
+?done:
+endmacro
+; A large sprite (two units; 16-bit counts).
+macro fx_fl_big(j)
+	LDA.w $0801+(<j>*4),X
+	CLC
+	ADC.b #32
+	CMP !fl_la
+	BCC ?b
+	CMP !fl_ea2
+	BCS ?b
+	REP #$20
+	INC !fl_na
+	INC !fl_na
+	SEP #$20
+?b:
+	CMP !fl_lb
+	BCC ?done
+	CMP !fl_eb2
+	BCS ?done
+	REP #$20
+	INC !fl_nb
+	INC !fl_nb
+	SEP #$20
+?done:
+endmacro
+; A small sprite with 16-bit counts (a group with a large sprite).
+macro fx_fl_two16(j)
+	LDA.w $0801+(<j>*4),X
+	CLC
+	ADC.b #16
+	CMP !fl_la
+	BCC ?b
+	CMP !fl_ea
+	BCS ?b
+	REP #$20
+	INC !fl_na
+	SEP #$20
+?b:
+	CMP !fl_lb
+	BCC ?done
+	CMP !fl_eb
+	BCS ?done
+	REP #$20
+	INC !fl_nb
+	SEP #$20
+?done:
+endmacro
+fx_lines_load:
+	%fx_fl_band(!fl_a, !fl_ah, !fl_la)
+	%fx_fl_band(!fl_b, !fl_bh, !fl_lb)
+	STZ !fl_na
+	STZ !fl_nb
+	LDA.w !core_oam_cursor&$FFFF
+	STA !fl_end
+	AND.w #$FFE0
+	STA !fl_grp
+	LDX.w #$0000
+	LDA !fl_end
+	BNE +
+	JMP .front
++	CLC                          ; a large sprite below the cursor? (its
+	ADC.w #31                    ; high-table words; the game clears the
+	LSR                          ; table, slots past the cursor are 0)
+	LSR
+	LSR
+	LSR
+	LSR
+	TAY
+	LDX.w #$0000
+	TXA
+-	ORA.w $0A00,X
+	INX
+	INX
+	DEY
+	BNE -
+	LDX.w #$0000
+	AND.w #$AAAA
+	SEP #$20
+	BEQ +
+	JMP .sized
++	LDA !fl_eb                   ; all small; no band B: the one-band loop
+	BEQ .one
+	JMP .two
+.one
+	CPX !fl_grp
+	BCC +
+	JMP .tail
++
+	for j = 0..8
+		%fx_fl_one(!j)
+	endfor
+	REP #$20
+	TXA
+	CLC
+	ADC.w #32
+	TAX
+	SEP #$20
+	JMP .one
+.two
+	CPX !fl_grp
+	BCC +
+	JMP .tail
++
+	for j = 0..8
+		%fx_fl_two(!j)
+	endfor
+	REP #$20
+	TXA
+	CLC
+	ADC.w #32
+	TAX
+	SEP #$20
+	JMP .two
+.tail                            ; the last 0-7 slots, all small
+	CPX !fl_end
+	BCS .toFront
+	%fx_fl_two(0)
+	INX
+	INX
+	INX
+	INX
+	BRA .tail
+.toFront
+	JMP .front
+.sized                           ; some large: groups with one test sizes
+	CPX !fl_grp
+	BCC +
+	JMP .sizedTail
++	REP #$20
+	TXA
+	LSR
+	LSR
+	LSR
+	LSR
+	TAY
+	LDA.w $0A00,Y                ; the group's size bits
+	AND.w #$AAAA
+	BEQ +
+	LDY.w #8
+	JSR .mixed
+	SEP #$20
+	BRA .sized
++	SEP #$20
+	for j = 0..8
+		%fx_fl_two16(!j)
+	endfor
+	REP #$20
+	TXA
+	CLC
+	ADC.w #32
+	TAX
+	SEP #$20
+	JMP .sized
+.sizedTail                       ; the last 0-7 slots (whole groups before:
+	REP #$20                     ; the first one's size bits are bits 0-1)
+	LDA !fl_end
+	SEC
+	STX !fl_grp
+	SBC !fl_grp
+	BEQ .front
+	LSR
+	LSR
+	TAY
+	TXA
+	LSR
+	LSR
+	LSR
+	LSR
+	TAX
+	LDA.w $0A00,X
+	LDX !fl_grp
+	JSR .mixed
+.front                           ; the front sprites other modules staged
+	REP #$20
+	LDA.w !core_oam_front_n&$FFFF
+	SEC
+	SBC.l !fx_front
+	BEQ .done
+	BMI .done
+	ASL
+	ASL
+	STA !fl_end
+	LDX.w #$0000
+.fslot
+	PHX
+	TXA
+	LSR
+	TAX
+	LDA.w !core_oam_front_hi&$FFFF,X ; bit 1: large
+	PLX
+	SEP #$20
+	AND.b #$02
+	BNE .fbig
+	LDA.w (!core_oam_front&$FFFF)+1,X
+	CLC
+	ADC.b #16
+	CMP !fl_la
+	BCC +
+	CMP !fl_ea
+	BCS +
+	REP #$20
+	INC !fl_na
+	SEP #$20
++	CMP !fl_lb
+	BCC .fnext
+	CMP !fl_eb
+	BCS .fnext
+	REP #$20
+	INC !fl_nb
+	SEP #$20
+	BRA .fnext
+.fbig
+	LDA.w (!core_oam_front&$FFFF)+1,X
+	CLC
+	ADC.b #32
+	CMP !fl_la
+	BCC +
+	CMP !fl_ea2
+	BCS +
+	REP #$20
+	INC !fl_na
+	INC !fl_na
+	SEP #$20
++	CMP !fl_lb
+	BCC .fnext
+	CMP !fl_eb2
+	BCS .fnext
+	REP #$20
+	INC !fl_nb
+	INC !fl_nb
+	SEP #$20
+.fnext
+	REP #$20
+	INX
+	INX
+	INX
+	INX
+	CPX !fl_end
+	BCC .fslot
+.done
+	REP #$20
+	RTS
+; Y slots from X, A16 = their high-table bits (the first slot's in bits
+; 0-1): each tested at its own size. 16-bit counts. Out: X past them, M16.
+.mixed
+	PHA
+	SEP #$20
+.mslot
+	LDA $01,S
+	AND.b #$02
+	BNE .mbig
+	%fx_fl_two16(0)
+	BRA .mnext
+.mbig
+	%fx_fl_big(0)
+.mnext
+	REP #$20
+	LDA $01,S
+	LSR
+	LSR
+	STA $01,S
+	INX
+	INX
+	INX
+	INX
+	SEP #$20
+	DEY
+	BNE .mslot
+	REP #$20
+	PLA
+	RTS
+; X = first line (signed), A = height -> X = first line clipped to 0-222,
+; A = the lines left from it (Z: none). M16.
+fx_fl_clip:
+	STX !fl_end
+	CLC
+	ADC !fl_end
+	BMI .empty                   ; ends above line 0
+	CMP.w #223
+	BCC +
+	LDA.w #223
++	PHA
+	LDA !fl_end
+	BPL +
+	LDA.w #$0000
++	TAX
+	STA !fl_end
+	PLA
+	SEC
+	SBC !fl_end
+	BEQ +
+	BPL +
+.empty
+	LDA.w #$0000
++	RTS
+endif
