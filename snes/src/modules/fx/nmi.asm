@@ -121,8 +121,6 @@ fx_nmi_cells:
 +	SEP #$20
 	LDA.b #$80
 	STA $2115
-	LDA.b #fx_cells>>16
-	STA $4304,Y
 	REP #$20
 	LDA.w #$1801                 ; A->B, $2118/$2119
 	STA $4300,Y
@@ -130,24 +128,40 @@ fx_nmi_cells:
 .loop
 	LDA.l fx_entry_bit,X
 	AND.l !fx_cpend
-	BEQ .next
-	JSR fx_nmi_vline             ; start a cell only before line 258
+	BNE +
+	JMP .next
++	JSR fx_nmi_vline             ; start a cell only before line 258
 	CMP.w #258
-	BCS .done
+	BCS +
 	CMP.w #225
-	BCC .done
-	LDA.l !fx_nmi_reg
+	BCS ++
++	JMP .done
+++	LDA.l !fx_nmi_reg
 	TAY
 	LDA.l fx_entry_vram,X
 	STA $2116
-	LDA.l !fx_ccell,X            ; source = cells + cell*128
+	LDA.l !fx_ccell,X            ; source: xdata fx_cells0 for ids 0-255,
+	CMP.w #256                   ; fx_cells1 above; + (id & 255) * 128
+	SEP #$20
+	LDA.b #!XDATA_FX_CELLS0>>16
+	BCC +
+	LDA.b #!XDATA_FX_CELLS1>>16
++	STA $4304,Y
+	REP #$20
+	LDA.l !fx_ccell,X
+	PHP
+	AND.w #$00FF
 	LSR
 	XBA
 	BCC +
 	ORA.w #$0080
++	PLP
+	BCS +
+	ADC.w #!XDATA_FX_CELLS0&$FFFF
+	BRA ++
 +	CLC
-	ADC.w #fx_cells&$FFFF
-	STA $4302,Y
+	ADC.w #!XDATA_FX_CELLS1&$FFFF
+++	STA $4302,Y
 	LDA.w #64
 	STA $4305,Y
 	SEP #$20

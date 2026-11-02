@@ -7,7 +7,8 @@
 // and sprite-layer.js do at load time. No art is stored in the repository.
 //
 // Outputs (dist/snes/gen/fx/):
-//   cells.bin   16x16 OBJ cells, 128 bytes each (TL,TR,BL,BR 4bpp tiles)
+//   cells.bin   16x16 OBJ cells, 128 bytes each (TL,TR,BL,BR 4bpp tiles);
+//               on the cartridge as xdata blobs fx_cells0 / fx_cells1
 //   data.asm    palettes, cell classes, assemblies and lookup tables
 //   preview.png every cell in its palette (not shipped)
 //
@@ -93,6 +94,14 @@ export async function generate({rom,repo,outDir,xdata}){
   for(let f=0;f<12;f++){const p=new Uint16Array(256);deathArt(f,8,8,16,(x,y,c)=>{if(x>=0&&y>=0&&x<16&&y<16)p[y*16+x]=c;});deathSmall.push(p);}
   const death32=[];
   for(let f=0;f<12;f++){const p=new Uint16Array(1024);deathArt(f,16,16,32,(x,y,c)=>{if(x>=0&&y>=0&&x<32&&y<32)p[y*32+x]=c;});death32.push(p);}
+  // The cinematic (planet-killing) ball: the 64 px red art, here at 16 and
+  // 32 px for OBJ cells and at 64 px (one pixel per art texel) for the
+  // polygon's rows. Its sparse corona violet joins the nearest PINK colour,
+  // so the red art fits PINK's 15 colours.
+  const redFix=c=>c===1+0x3454?1+0x3C38:c;
+  const redArt=size=>Array.from({length:12},(_,f)=>{const p=new Uint16Array(size*size);
+    deathArt(f,size/2,size/2,size,(x,y,c)=>{if(x>=0&&y>=0&&x<size&&y<size)p[y*size+x]=redFix(c);},{cinematic:true});return p;});
+  const red16=redArt(16),red32=redArt(32),red64=redArt(64);
 
   // --- palette classes -------------------------------------------------------
   // Each class is one 15-colour OBJ palette; FX maps classes to free OBJ
@@ -110,6 +119,7 @@ export async function generate({rom,repo,outDir,xdata}){
   assign(['gold-spark','gold-arc','gold-charge-orb','gold-beam-body','gold-beam-head','lightning','lightning-impact'],2);
   for(const p of deathSmall)for(const c of p)if(c)classColors[1].add(c);
   for(const p of death32)for(const c of p)if(c)classColors[1].add(c);
+  for(const p of[...red16,...red32])for(const c of p)if(c)classColors[1].add(c);
   assign(['fire-beam-body'],3);
   for(const p of combustion)for(const c of p)if(c)classColors[3].add(c);
   const palettes=classColors.map((set,k)=>{
@@ -231,6 +241,17 @@ export async function generate({rom,repo,outDir,xdata}){
     for(let q=0;q<4;q++){const qx=(q&1)*16,qy=(q>>1)*16,c=new Uint16Array(256);
       for(let y=0;y<16;y++)for(let x=0;x<16;x++)c[y*16+x]=p[(qy+y)*32+qx+x];
       const id=addCell(c,1,'death32');if(id>=0)parts.push({cell:id,x:qx-16,y:qy-16,h:false,v:false});}
+    asms.push(parts);
+  }
+  // The cinematic red ball at 16 px (one cell) and 32 px (four), no turns.
+  const red16Base=asms.length;
+  for(const p of red16)asms.push([{cell:addCell(p,1,'red16'),x:-8,y:-8,h:false,v:false}].filter(q=>q.cell>=0));
+  const red32Base=asms.length;
+  for(const p of red32){
+    const parts=[];
+    for(let q=0;q<4;q++){const qx=(q&1)*16,qy=(q>>1)*16,c=new Uint16Array(256);
+      for(let y=0;y<16;y++)for(let x=0;x<16;x++)c[y*16+x]=p[(qy+y)*32+qx+x];
+      const id=addCell(c,1,'red32');if(id>=0)parts.push({cell:id,x:qx-16,y:qy-16,h:false,v:false});}
     asms.push(parts);
   }
   // Death Disc (orbit-effects.js disc): 20x6 from gold-charge-orb[4], pink,
@@ -415,6 +436,11 @@ export async function generate({rom,repo,outDir,xdata}){
     for(const[x,y]of[[0,0],[8,0],[0,8],[8,8]]){bin.set(encodeTile(idx,16,x,y),o);o+=32;}
   });
   writeFileSync(join(outDir,'cells.bin'),bin);
+  // The cells are only read by DMA (fx_nmi_cells): xdata, 256 cells (32 KiB)
+  // per blob, fx_cells0 for ids 0-255 and fx_cells1 for the rest.
+  if(cells.length>512)throw Error('fx: more than two cell blobs');
+  xdata?.('fx_cells0',bin.subarray(0,Math.min(bin.length,256*CELL_BYTES)));
+  xdata?.('fx_cells1',bin.length>256*CELL_BYTES?bin.subarray(256*CELL_BYTES):new Uint8Array(CELL_BYTES));
 
   // Assembly records: part count, cell count, bounding box of the parts'
   // top-left corners (min x, min y, max x, max y: signed bytes), the
@@ -537,6 +563,55 @@ export async function generate({rom,repo,outDir,xdata}){
     }
   }
 
+  // The cinematic red ball as a polygon (poly.asm fx_poly_dball_red): the
+  // art's sphere is the pixels drawn in every frame, its rim the pixels
+  // that are the rim colour in every frame, and each art row's shade the
+  // most frequent of the two shade colours there. Per even size 16-224
+  // (death-ball-art.js cinematic sizes) the screen lines merged into
+  // entries of window 1 (the sphere) and window 2 (inside the rim), columns
+  // from the centre + 128 (an empty window is first > last next to window
+  // 1), as the browser upscales the art; then the line where the lower
+  // shade starts. xdata fx_red_rows: per size the entry count, the shade
+  // line, the entries (lines, w1 first, w1 last, w2 first, w2 last).
+  const redAll=new Uint8Array(64*64).fill(1),redRim=new Uint8Array(64*64),redShade=[];
+  for(const p of red64)for(let i=0;i<4096;i++)if(!p[i])redAll[i]=0;
+  const rimColour=red64[0][32*64+redAll.subarray(32*64,33*64).indexOf(1)];   // the sphere's left edge
+  for(let i=0;i<4096;i++)redRim[i]=redAll[i]&&red64.every(p=>p[i]===rimColour)?1:0;
+  // The upper shade is the sphere's most frequent inner colour; the lower
+  // one the most frequent colour darker than it in the lower rows (the hot
+  // patches are lighter).
+  const mostIn=(y0,y1,ok)=>{const n=new Map();for(const p of red64)for(let i=y0*64;i<y1*64;i++)if(redAll[i]&&!redRim[i]&&ok(p[i]))n.set(p[i],(n.get(p[i])??0)+1);
+    return [...n].sort((a,b)=>b[1]-a[1])[0][0];};
+  const shadeA=mostIn(0,64,()=>true),shadeB=mostIn(44,64,c=>luma(c)<luma(shadeA));
+  // (rows with few shade pixels, near the rim, are patches: ignored)
+  for(let y=0;y<64;y++){let a=0,b=0;for(const p of red64)for(let x=0;x<64;x++){if(p[y*64+x]===shadeA)a++;if(p[y*64+x]===shadeB)b++;}
+    redShade.push(a+b<50?-1:b>a?1:0);}
+  const shadeLine=redShade.indexOf(1);
+  if(shadeLine<0||redShade.slice(shadeLine).some(v=>v===0)||redShade.slice(0,shadeLine).some(v=>v===1))throw Error('fx: red ball shades are not two bands '+[shadeA,shadeB].map(c=>(c-1).toString(16))+' '+redShade.join(''));
+  const redRowSpan=(mask,y)=>{let lo=-1,hi=-1;for(let x=0;x<64;x++)if(mask[y*64+x]){if(lo<0)lo=x;hi=x;}return lo<0?null:[lo,hi];};
+  const redInner=Uint8Array.from(redAll,(v,i)=>v&&!redRim[i]?1:0);
+  const redIndex=[],redRows=[];
+  for(let size=16;size<=224;size+=2){
+    const cx=size/2,col=t=>Math.ceil(t*size/64),entries=[];
+    for(let py=0;py<size;py++){
+      const k=Math.floor(py*64/size),o=redRowSpan(redAll,k),n=redRowSpan(redInner,k);
+      let w1=[0,-1],w2=[0,-1];
+      if(o){w1=[col(o[0])-cx,col(o[1]+1)-1-cx];w2=n?[col(n[0])-cx,col(n[1]+1)-1-cx]:[w1[0],w1[0]-1];}
+      const rec=[...w1,...w2].map(v=>v+128);
+      if(rec.some(v=>v<0||v>255))throw Error('fx: red ball column out of range');
+      const last=entries.at(-1);
+      if(last&&last[0]<127&&last.slice(1).every((v,i)=>v===rec[i]))last[0]++;else entries.push([1,...rec]);
+    }
+    redIndex.push(redRows.length);
+    redRows.push(entries.length,Math.ceil(shadeLine*size/64),...entries.flat());
+  }
+  if(redRows.length>0x8000)throw Error('fx: red ball rows too large');
+  xdata?.('fx_red_rows',Uint8Array.from(redRows));
+  // Shades (the upper and lower art colours) and COLDATA for the rim:
+  // upper shade - rim per channel, subtracted (at least 0).
+  const chn=c=>[(c-1)&31,((c-1)>>5)&31,((c-1)>>10)&31],redSub=chn(shadeA).map((v,k)=>Math.max(0,v-chn(rimColour)[k]));
+  const redShades=[shadeA-1,shadeB-1],redFixBytes=[0x20|redSub[0],0x40|redSub[1],0x80|redSub[2],0];
+
   // Per tone: the rim colour, the inner colour, COLDATA for inner - rim.
   const auraTone=auraRamps.flatMap(r=>{
     const ch=c=>[c&31,(c>>5)&31,(c>>10)&31],d=ch(r[1]).map((x,k)=>x-ch(r[0])[k]);
@@ -591,7 +666,7 @@ export async function generate({rom,repo,outDir,xdata}){
   STAMP_GROUPS.forEach((g,i)=>a.def(`FX_SG_${g.replace(/-/g,'_').toUpperCase()}`,i));
   a.def('FX_STAMP_GROUPS',STAMP_GROUPS.length);
   a.def('FX_ASM_BURST',burstBase);a.def('FX_ASM_EMBER',emberBase);
-  a.def('FX_ASM_DEATH16',deathBase);a.def('FX_ASM_DEATH32',death32Base);a.def('FX_ASM_DISC',discBase);
+  a.def('FX_ASM_DEATH16',deathBase);a.def('FX_ASM_DEATH32',death32Base);a.def('FX_ASM_RED16',red16Base);a.def('FX_ASM_RED32',red32Base);a.def('FX_ASM_DISC',discBase);
   a.def('FX_ASM_FINGER',fingerBase);a.def('FX_ASM_FRAGMENT',fragBase);a.def('FX_ASM_LASER',laserBase);
   a.def('FX_ASM_RING',ringBase);a.def('FX_ASM_SPARKS',sparksBase);a.def('FX_ASM_STATUS',statusBase);a.def('FX_ASM_RUBBLE',rubbleBase);a.def('FX_ASM_DUST',dustBase);
   a.label('fx_class_palettes');for(const p of palettes){const row=[0,...p.map(c=>c-1)];while(row.length<16)row.push(0);a.dw(row);}
@@ -617,6 +692,9 @@ export async function generate({rom,repo,outDir,xdata}){
   t.label('fx_laser_step');t.db(laserStep);
   t.label('fx_laser_len');t.dw(laserLen);
   t.label('fx_aura_index');t.dw(auraIndex);
+  t.label('fx_red_index');t.dw(redIndex);
+  t.label('fx_red_shades');t.dw(redShades);
+  t.label('fx_red_fix');t.db(redFixBytes);
   t.label('fx_bolt_ptr');t.dw(boltPtr);
   if(boltData.length>0x8000)throw Error('fx: bolts too large');
   xdata?.('fx_bolts',Uint8Array.from(boltData));

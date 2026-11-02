@@ -869,11 +869,13 @@ fx_k_lightning:
 +	RTS
 
 ; ---------------------------------------------------------------------------
-; FX_DEATHBALL (death-ball-art.js draw(), not cinematic): !fx_t frame
-; (wrapped to 12), !fx_a diameter snapped to deathBallSizes (nearest, ties
-; to the smaller, as the browser). 16 and 32 px are OBJ art; the other sizes
-; are a polygon (poly.asm fx_poly_dball) while it is free, else the 32 px
-; ball.
+; FX_DEATHBALL (death-ball-art.js draw()): !fx_t frame (wrapped to 12),
+; !fx_a diameter. Style 0, the battle ball: snapped to deathBallSizes
+; (nearest, ties to the smaller, as the browser); 16 and 32 px are OBJ art,
+; the other sizes a polygon (poly.asm fx_poly_dball) while it is free, else
+; the 32 px ball. Style 1, the cinematic planet killer (64 px red art, any
+; even size 16-224): up to 24 px the 16 px art, up to 48 the 32 px art,
+; larger a polygon (fx_poly_dball_red), else the 32 px art.
 fx_k_deathball:
 	LDA.w #$0000
 	JSR fx_depth
@@ -883,7 +885,12 @@ fx_k_deathball:
 	SBC.w #12
 	BRA -
 +	STA !d_ks                    ; frame
-	LDA !d_cur+!C_A              ; the first size >= the diameter ...
+	LDA !d_cur+!C_STYLE
+	AND.w #$00FF
+	CMP.w #1
+	BNE +
+	JMP fx_k_redball
++	LDA !d_cur+!C_A              ; the first size >= the diameter ...
 	STA !d_tmp
 	LDX.w #$0000
 -	LDA.l fx_dball_sizes,X
@@ -929,6 +936,38 @@ fx_k_deathball:
 	BRA +
 .obj16
 	LDA.w #!FX_ASM_DEATH16
++	CLC
+	ADC !d_ks
+	JMP fx_emit_here
+
+; The cinematic ball: size 2 * round(diameter / 2), 16-224 (the browser's).
+fx_k_redball:
+	LDA !d_cur+!C_A
+	INC
+	AND.w #$FFFE
+	CMP.w #16
+	BCS +
+	LDA.w #16
++	CMP.w #225
+	BCC +
+	LDA.w #224
++	STA !d_ks+2
+	CMP.w #26
+	BCC .obj16
+	CMP.w #50
+	BCC .obj32
+	JSR fx_poly_dball_red
+	PHP
+	LDA.w #$FFFF                 ; the builder used !d_tiles and !d_ptr
+	STA !d_lasta
+	PLP
+	BCS .obj32
+	RTS
+.obj32
+	LDA.w #!FX_ASM_RED32
+	BRA +
+.obj16
+	LDA.w #!FX_ASM_RED16
 +	CLC
 	ADC !d_ks
 	JMP fx_emit_here

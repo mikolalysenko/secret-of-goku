@@ -110,10 +110,10 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_pkey      = !FX_SRAM+$252  ; 6 words: parameters of the last built polygon (+8 = $FFFF: none)
 !fx_pshown    = !FX_SRAM+$25E  ; word: that polygon is in the buffer on screen
 !fx_preuse    = !FX_SRAM+$260  ; word: this frame shows it again (no build, no buffer swap)
-!fx_rbits     = !FX_SRAM+$262  ; 40 bytes: bit per cell id resident in the cache
-!FX_RBITS_SIZE = 40
-!fx_poly      = !FX_SRAM+$28A  ; two HDMA table buffers
-!FX_PBUF_SIZE = ($400-$28A)/2
+!fx_rbits     = !FX_SRAM+$262  ; 48 bytes: bit per cell id resident in the cache
+!FX_RBITS_SIZE = 48
+!fx_poly      = !FX_SRAM+$292  ; two HDMA table buffers
+!FX_PBUF_SIZE = ($400-$292)/2
 assert !fx_draws+(!FX_DRAWS*16) <= !fx_vbl, "fx SRAM layout overlap"
 assert !fx_slots+(!FX_SLOTS*16) <= !fx_draws, "fx SRAM layout overlap"
 assert !fx_pfix+3 <= !fx_hash, "fx SRAM layout overlap"
@@ -191,8 +191,6 @@ else
 endif
 pushpc
 org !FX_DATA
-fx_cells:
-incbin "fx/cells.bin"
 fx_data:
 incsrc "fx/data.asm"
 fx_data_end:

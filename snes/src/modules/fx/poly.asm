@@ -1448,6 +1448,277 @@ fx_poly_aura:
 .blob                            ; fx.mjs xdata: rows per height
 	dl !XDATA_FX_AURA16, !XDATA_FX_AURA32, !XDATA_FX_AURA40
 
+;---------------------------------------------------------------------------
+; The cinematic (planet-killing) Death Ball above 48 px: death-ball-art.js
+; scales its 64 px red art to any even size, so fx.mjs stores per size the
+; screen lines as entries (xdata fx_red_rows: lines, window 1 = the sphere,
+; window 2 = inside its rim, columns from the centre + 128). The backdrop
+; is the art's upper / lower shade, the rim ring (window 1 xor 2) is
+; darkened by COLDATA (HDMA kind 3, as the violet ball). Entries go into the
+; table clipped to the screen; when the visible ones do not fit, every
+; table entry takes two or more of them (their first windows).
+; In: !d_ks+2 size (even, 16-224), !d_cur X/Y centre. C clear when drawn.
+!fxr_n    = !d_ks+$04         ; entries left
+!fxr_sh   = !d_ks+$06         ; first line of the lower shade (from the top)
+!fxr_st   = !d_ks+$08         ; entries per table entry
+!fxr_line = !d_ks+$0A         ; line of the next entry
+!fxr_off  = !d_ks+$0C         ; offset of the next entry
+fx_poly_dball_red:
+	JSR fx_poly_avail
+	BCC +
+	RTS
++	LDA !d_ks+2                  ; fx_red_index[(size - 16) / 2]
+	SEC
+	SBC.w #16
+	TAX
+	LDA.l fx_red_index,X
+	CLC
+	ADC.w #!XDATA_FX_RED_ROWS&$FFFF
+	STA !d_ptr
+	SEP #$20
+	LDA.b #!XDATA_FX_RED_ROWS>>16
+	STA !d_ptr+2
+	REP #$20
+	LDA [!d_ptr]                 ; entries | lower shade line << 8
+	PHA
+	AND.w #$00FF
+	STA !fxr_n
+	PLA
+	XBA
+	AND.w #$00FF
+	STA !fxr_sh
+	LDA !d_ptr
+	CLC
+	ADC.w #2
+	STA !d_ptr
+	LDA !d_cur+!C_X
+	STA !fxp_x
+	LDA !d_ks+2
+	STA !fxp_len
+	LSR
+	STA !d_tmp
+	LDA !d_cur+!C_Y              ; top = centre - size / 2
+	SEC
+	SBC !d_tmp
+	STA !fxp_y
+	LDA.w #$00E1                 ; key fields: the red ball's tag
+	STA !fxp_hw
+	STZ !fxp_t
+	STZ !fxp_rip
+	LDA.l fx_red_fix             ; COLDATA for the rim (fx_nmi kind 3)
+	STA.l !fx_pfix
+	LDA.l fx_red_fix+2
+	STA.l !fx_pfix+2
+	JSR fx_poly_key
+	BCS .build
+	LDA.l !fx_pshown             ; the same picture: show those tables again
+	STA.l !fx_preuse
+	LDA.w #$0003
+	STA.l !fx_poly_req
+	CLC
+	RTS
+.build
+	LDA.w #$FFFF
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_preuse
+	STZ !fxp_ovf
+	LDA.l !fx_pbuf
+	CLC
+	ADC.w #!fx_poly&$FFFF
+	TAX
+	ADC.w #!FX_PBUF_SIZE
+	STA !fxp_end
+	SEP #$20
+	LDA.b #$00
+	STA.l !FX_PBASE,X            ; the buffer's first byte stays 0
+	REP #$20
+	INX
+	STX !fxp_out
+	TXA
+	STA.l !fx_ptab3
+	; Channel 3: the game's backdrop, the upper shade, the lower shade, the
+	; backdrop.
+	LDA.w #5
+	JSR fx_pw_open
+	LDA.w #4
+	JSR fx_pw_colour
+	LDA !fxp_y
+	JSR fx_pw_to
+	LDA.l fx_red_shades
+	TAY
+	LDX.w #$0000
+	LDA !fxp_y
+	CLC
+	ADC !fxr_sh
+	JSR fx_pw_to
+	LDA.l fx_red_shades+2
+	TAY
+	LDX.w #$0000
+	LDA !fxp_y
+	CLC
+	ADC !fxp_len
+	JSR fx_pw_to
+	LDA.w #4
+	JSR fx_pw_colour
+	JSR fx_pw_close
+	; Entries per table entry: the visible entries (lines 0-223) must fit
+	; the rest of the buffer, 5 bytes each with ~30 for the ends.
+	JSR .visible                 ; A = visible entries
+	STA !d_tmp+4
+	LDA !fxp_end
+	SEC
+	SBC !fxp_out
+	SEC
+	SBC.w #30
+	BPL +
+	LDA.w #0
++	STA !d_tmp+6                 ; bytes for entries
+	LDA.w #1
+	STA !fxr_st
+-	LDA !d_tmp+4                 ; ceil(visible / stride) * 5 <= room?
+	CLC
+	ADC !fxr_st
+	DEC
+	STA.l $004204
+	SEP #$20
+	LDA !fxr_st
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004214
+	STA !d_tmp
+	ASL
+	ASL
+	CLC
+	ADC !d_tmp
+	CMP !d_tmp+6
+	BCC +
+	BEQ +
+	INC !fxr_st
+	LDA !fxr_st
+	CMP.w #8
+	BCC -
++	; Channel 2 (mode 4): window 1 the sphere, window 2 inside its rim.
+	LDA !fxp_out
+	STA.l !fx_ptab2
+	LDA.w #5
+	JSR fx_pw_open
+	LDX.w #$00FF
+	LDY.w #$00FF
+	LDA !fxp_y
+	JSR fx_pw_to
+	LDA !fxp_y
+	STA !fxr_line
+	STZ !fxr_off
+.entry
+	LDA !fxr_n
+	BNE +
+	JMP .done
++	LDA !fxr_line
+	CMP.w #!FX_PLINES
+	BCC +
+	BMI +                        ; (negative: above the screen)
+	JMP .done
++	LDY !fxr_off                 ; this table entry's windows
+	INY
+	LDA [!d_ptr],Y
+	JSR .window
+	PHA
+	INY
+	INY
+	LDA [!d_ptr],Y
+	JSR .window
+	PHA
+	LDX !fxr_st                  ; its lines: up to stride entries
+-	LDY !fxr_off
+	LDA [!d_ptr],Y
+	AND.w #$00FF
+	CLC
+	ADC !fxr_line
+	STA !fxr_line
+	LDA !fxr_off
+	CLC
+	ADC.w #5
+	STA !fxr_off
+	DEC !fxr_n
+	BEQ +
+	DEX
+	BNE -
++	PLY
+	PLX
+	LDA !fxr_line
+	JSR fx_pw_to
+	JMP .entry
+.done
+	LDX.w #$00FF
+	LDY.w #$00FF
+	JSR fx_pw_close
+	LDA !fxp_ovf
+	BEQ +
+	SEC
+	RTS
++	LDA.w #$0004
+	STA.l !fx_pdmap
+	LDA.w #$0003
+	STA.l !fx_poly_req
+	LDA.l !fx_s                  ; the key now describes these tables
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_pshown
+	CLC
+	RTS
+.window                          ; A = first | last column from the centre + 128 -> record
+	PHA
+	AND.w #$00FF
+	SEC
+	SBC.w #128
+	CLC
+	ADC !fxp_x
+	STA !d_tmp
+	PLA
+	XBA
+	AND.w #$00FF
+	SEC
+	SBC.w #128
+	CLC
+	ADC !fxp_x
+	STA !d_tmp+2
+	JMP fx_pw_lohi
+.visible                         ; A = entries with a line on the screen
+	PHY
+	LDA !fxp_y
+	STA !d_tmp
+	LDA.w #0
+	STA !d_tmp+2                 ; visible
+	LDY.w #$0000
+	LDX !fxr_n
+-	LDA [!d_ptr],Y               ; lines of this entry
+	AND.w #$00FF
+	CLC
+	ADC !d_tmp
+	STA !d_tmp                   ; its end line
+	BMI +                        ; ends above the screen
+	BEQ +
+	INC !d_tmp+2
+	CMP.w #!FX_PLINES
+	BCS ++                       ; reaches the bottom: the rest is off
++	TYA
+	CLC
+	ADC.w #5
+	TAY
+	DEX
+	BNE -
+++	LDA !d_tmp+2
+	PLY
+	RTS
+
 ; A16 = the current scanline (fx_frame; any DB).
 fx_frame_vline:
 	SEP #$20

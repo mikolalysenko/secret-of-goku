@@ -157,14 +157,18 @@ async function runMesen({rom,test,outDir,state=null,timeoutMs=600000}){
   return {code,results,output:stdout,outDir};
 }
 
-// asar does not report overlapping writes: make sure no other module's data
-// landed on FX's cells (bank !FX_DATA, snes/src/modules/fx/module.asm).
+// Make sure FX's cells landed intact in the image (xdata blobs fx_cells0 /
+// fx_cells1, dist/snes/gen/xdata.asm; ExHiROM banks $40-$7D read the second
+// 4 MiB of the file).
 function checkCells(rom){
-  const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').match(/^([0-9A-F]{2}):([0-9A-F]{4}) fx_cells$/im);
-  if(!sym)return 'no fx_cells symbol';
-  const bank=parseInt(sym[1],16),addr=parseInt(sym[2],16),off=((bank&0x3F)<<16)|addr;
+  const xd=readFileSync(resolve(repo,'dist/snes/gen/xdata.asm'),'utf8');
+  const at=name=>{const m=xd.match(new RegExp(`^!XDATA_${name} = \\$([0-9A-F]{6})$`,'m'));return m?parseInt(m[1],16):null;};
   const cells=readFileSync(resolve(repo,'dist/snes/gen/fx/cells.bin')),img=readFileSync(rom);
-  for(let i=0;i<cells.length;i++)if(img[off+i]!==cells[i])return `fx cells overwritten at ${sym[1]}:${(addr+i).toString(16).toUpperCase()} (another module writes into FX's data bank)`;
+  for(const [name,from] of [['FX_CELLS0',0],['FX_CELLS1',256*128]]){
+    const a=at(name);if(a===null)return `no ${name} in xdata.asm`;
+    const off=0x400000+((a>>16)-0x40)*0x10000+(a&0xFFFF),n=Math.min(256*128,cells.length-from);
+    for(let i=0;i<n;i++)if(img[off+i]!==cells[from+i])return `fx cells differ at ${name}+${i.toString(16)} (another blob or module overwrote them)`;
+  }
   return null;
 }
 for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc')]){
