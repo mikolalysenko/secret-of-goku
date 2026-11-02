@@ -522,6 +522,19 @@ export async function generate({rom,repo,outDir,xdata}){
     if(words.length>7)throw Error('fx: a contact needs more than seven cells');
     warmList.push(...words,...Array(8-words.length).fill(0xFFFF));
   }
+  // A full base-form vertical Kamehameha uses one strip cell per animation
+  // phase (five bands). Charge warms those two cells through the same API;
+  // horizontal beams use the polygon and full Super Saiyan waves have their
+  // own path. Record 3, after the six impact records, per facing.
+  for(let facing=0;facing<4;facing++){
+    const turn=[1,0,2,3][facing],words=[];
+    if((facing&3)!==1&&(facing&3)!==2)for(let frame=0;frame<2;frame++){
+      const assembly=bandIndex[(frame*7+4)*4+turn];
+      for(const word of cellWords(asms[assembly]))if(!words.includes(word))words.push(word);
+    }
+    if(words.length>7)throw Error('fx: a full vertical beam needs more than seven cells');
+    warmList.push(...words,...Array(8-words.length).fill(0xFFFF));
+  }
   // Every kick record ends with the same slot (FX_IMP_NEXT looks there
   // first: that cell in, the rest came before it).
   const kickLast=new Set();

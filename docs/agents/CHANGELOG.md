@@ -118,6 +118,17 @@ Reviewed and left for later (minor or latent):
   the native marker's hidden state. Verified with strict builds and real
   libretro input captures of Status and Action Grid in both forms.
 
+## SNES Kamehameha warm-up fix (2026-11-01)
+
+- Warm the full base-form vertical Kamehameha's two strip cells during
+  charge, using the existing `fx_warm`/`FX_PREP` path and per-facing eviction
+  hints in previously free combat SRAM. The upward release no longer shows
+  only its palm orb for the first frames while those cells upload. Downward
+  and facing-change releases are covered too; horizontal polygon beams,
+  Super Saiyan waves, charge visuals and partial-charge widths are unchanged.
+  The cache regression checks both phases' resident and cold paths, and real
+  libretro captures verify complete strips by release frame 2.
+
 ## SNES native combat timing checkpoint (2026-11-01)
 
 - Validate the cached Beast body slot before rescanning native actors, and

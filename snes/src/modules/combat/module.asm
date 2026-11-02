@@ -208,7 +208,8 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
                            ;   step, | 2 when it missed every target (its native B pulse
                            ;   follows), | 4 a connected blow's, until Goku's hold is over
                            ; $1E5 lent to fx: !fx_hitnew (fx/defs.asm; fx clears it at init)
-                           ; $1E6-$1EF free (the beam pulses moved to !BP below)
+!cb_warm_beam = !CW+$1E6     ; 4 bytes: per-facing full vertical-beam cell hints
+                             ; $1EA-$1EF free (the beam pulses moved to !BP below)
 !PADH     = !CW+$1F0       ; pad 1 at each of the last 4 field vblanks (NMI tail)
 assert !cb_warm+6 <= !CW+$1DE && !CW+$1E2 <= !PADH, "combat: fx's lent bytes overlap"
 ; destroy_hit arguments (attack against the map; bind.asm), long addressing

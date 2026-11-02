@@ -52,7 +52,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Data `$E2:0000-$E2:10B4` | `!DATA_COMBAT` (`snes/gen/combat.mjs`): damage, beam damage/width by charge, beam half width 8.8 by charge and wave age (`combat_api_beam`), wave envelope by age, strength and focus tables, launch arcs, lift, radial ease, hand sockets, item names, placeholder cells |
 | Core `$A0:F10E-$A0:F123` | The extension lists in `modules.asm` (`modules_combat_targets`, `_damage`, `_receive`), core's bank |
 | WRAM `$7E:D800-$7E:D8FF` | `!RAM_COMBAT` (map in `module.asm`); public fields below |
-| SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records (an impact's `er_aux` holds its impact frame), 9 launch records, 9 sound marks, fx's eviction count per blow and form when the blow's contact cells were last resident (`!cb_warm`, 6 bytes at `$31:7DD8`), four bytes lent to fx for its impact state (`$31:7DDE-7DE1`: `!fx_evict`, `!fx_wdue`, `!fx_kickd`; fx's own block has none to spare), the pad of the last four field vblanks (`!PADH`), destroy_hit arguments, the beam picture, 16 beam pulse timers (per target bit), the virtual target cache and the log of the last 8 virtual hits (`!VT`, `$31:7E34`), `combat_api_beam`'s record (`!cb_beam`), the hold owners (`!cb_inhold`); test builds `$31:7F00-7F23` (`!CBT`) |
+| SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records (an impact's `er_aux` holds its impact frame), 9 launch records, 9 sound marks, fx's eviction count per blow and form when the blow's contact cells were last resident (`!cb_warm`, 6 bytes at `$31:7DD8`), four bytes lent to fx for its impact state (`$31:7DDE-7DE1`: `!fx_evict`, `!fx_wdue`, `!fx_kickd`; fx's own block has none to spare), four per-facing vertical-beam warm hints (`!cb_warm_beam`, `$31:7DE6-7DE9`), the pad of the last four field vblanks (`!PADH`), destroy_hit arguments, the beam picture, 16 beam pulse timers (per target bit), the virtual target cache and the log of the last 8 virtual hits (`!VT`, `$31:7E34`), `combat_api_beam`'s record (`!cb_beam`), the hold owners (`!cb_inhold`); test builds `$31:7F00-7F23` (`!CBT`) |
 | SRAM `$31:6200` | `!PERSIST_COMBAT` byte 0: `PCF_REVEALED` (the first transformation reveal was seen). Shared: `!persist_ssj_lock` (permanent form), `!persist_goku_active` (read). NEW GAME resets the form (combat's and `!goku_form`) to base; a load sets both from `!persist_ssj_lock`, whatever the title-time init saw |
 | OAM / VRAM | Placeholder effects only (`!COMBAT_FX_PLACEHOLDER`: 1 unless the real fx library is in the build, detected by its `!fx_busy`): OBJ region `!VRAM_FIELD_OBJ_B` (owner `$02`, tiles `$184+`) |
 | Other modules' RAM written | `!goku_form`, `!goku_act`, `!goku_act_facing/_age/_arg/_dur`, `!goku_mode/_facing/_age` (reactions); destroy's `!arg_*`; fx's request block; core `!core_pad_mask/_inject` |
@@ -145,7 +145,10 @@ Super Saiyan kick's one-frame wind-up cannot bring its six cells in (the
 first kick of a scene showed only the shockwave's last three frames), so a
 cross's spark brings them in after its hold (fx `FX_IMP_NEXT`): the first
 kick after a connected cross shows the whole shockwave, base form too. The
-goku module draws the lunge ([goku](goku.md)). The cues are unchanged: HIT
+goku module draws the lunge ([goku](goku.md)). During a base-form charge,
+`cb_fx_beam_prep` likewise warms the full vertical strip's two animation
+cells, keeping an eviction hint per facing in `!cb_warm_beam`; the release no
+longer shows only the palm orb while those cells arrive. The cues are unchanged: HIT
 for the jab and cross, KICK for the kick.
 
 **SNES-only by the maintainer's request (2026-10-21).** "make goku's moves

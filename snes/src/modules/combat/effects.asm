@@ -281,6 +281,7 @@ cb_fx_continuous:
 	REP #$20
 	BEQ .out
 	JSR cb_fx_orb
+	JSR cb_fx_beam_prep           ; vertical strip cells land before release
 	LDA !cb_form
 	AND.w #$00FF
 	BEQ .out

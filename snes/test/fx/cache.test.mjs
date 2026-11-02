@@ -43,17 +43,17 @@ function cache(){
     sram[HASH+(cell&(HASH_SIZE-1))]=slot*2;
     word(DIRTY,1);
   }
-  function call(name,a=0,x=0){
+  function call(name,a=0,x=0,returnBank=null,returnSp=0x1FFF){
     cpu.reset();cpu.e=false;cpu.m=false;cpu.x=false;
-    const entry=at(name);cpu.r[0]=0x7E;cpu.r[1]=entry>>>16;
+    const entry=at(name);returnBank??=entry>>>16;cpu.r[0]=0x7E;cpu.r[1]=entry>>>16;
     cpu.br.set([a,x,0xBEEF,0x1FFD,entry&65535,DP]);ram.writeUInt16LE(0x6FFF,0x1FFE);
     let cycles=0,scans=0;
-    for(let n=0;cpu.br[4]!==0x7000||cpu.r[1]!==entry>>>16;n++){
+    for(let n=0;cpu.br[4]!==0x7000||cpu.r[1]!==returnBank;n++){
       assert(n<10000,`${name} did not return`);
       if(((cpu.r[1]<<16)|cpu.br[4])===at('fx_cache_get_scan'))scans++;
       cpu.cyclesLeft=0;cpu.cycle();cycles+=cpu.cyclesLeft+1;
     }
-    assert.equal(cpu.br[3],0x1FFF);assert.equal(cpu.br[5],DP);assert.equal(cpu.r[0],0x7E);
+    assert.equal(cpu.br[3],returnSp);assert.equal(cpu.br[5],DP);assert.equal(cpu.r[0],0x7E);
     assert(!cpu.m&&!cpu.x);
     return {a:cpu.br[0],x:cpu.br[1],carry:cpu.c,cycles,scans};
   }
@@ -181,6 +181,34 @@ test('repeated region resets are cheap and preserve adjacent shared work',t=>{
   c.call('fx_clear_rbits');assert.equal(c.read(DIRTY),0);
   assert(c.sram.subarray(HASH,HASH+HASH_SIZE).every(v=>v===255));
   t.diagnostic(`residency reset: ${first.cycles} CPU cycles; repeated reset: ${second.cycles}`);
+});
+
+test('full vertical Kamehameha cells use the contact warm-up records',()=>{
+  const list=hiromToPc(at('fx_warm_list'));
+  for(const facing of [0,3]){
+    const words=[];
+    for(let i=0;i<8;i++){
+      const word=rom.readUInt16LE(list+((24+facing)*8+i)*2);
+      if(word===0xFFFF)break;
+      words.push(word);
+    }
+    assert.equal(words.length,2,`facing ${facing}: one strip cell per animation phase`);
+    assert.notEqual(words[0],words[1],'the two animation phases must both be warmed');
+    const resident=cache();
+    words.forEach((word,i)=>resident.resident(i,word&511));
+    resident.word(0x8C,0xF0C7);resident.word(0x30,7);
+    assert.equal(resident.call('fx_warm',3,facing,0,0x2000).a,0,'resident cells return the eviction hint');
+    assert.equal(resident.read(0x1C),0,'a resident warm-up draws nothing');
+    for(let i=0;i<2;i++)assert.equal(resident.read(USED+i*2),17,'warm cells count as used');
+
+    const cold=cache();cold.word(0x8C,0xF0C7);cold.word(0x30,7);
+    const queued=cold.call('fx_warm',3,facing,0,0x2000);
+    assert.equal(queued.a,0xFFFF,'cold cells request a later upload');
+    assert.equal(cold.read(0x1C),16,'one prepare record is queued');
+    assert.equal(cold.sram[FX+0x1A0],0x17,'the record is FX_PREP');
+    assert.equal(cold.sram[FX+0x1A0+6],facing,'the charge facing is preserved');
+    assert.equal(cold.read(0x1A0+8),3,'the full vertical-beam record is preserved');
+  }
 });
 
 test('cold or older SRAM invalidates the separate hint block before use',()=>{

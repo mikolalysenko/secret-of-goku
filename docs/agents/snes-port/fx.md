@@ -644,6 +644,13 @@ found by a search of the 15 cache entries when their hint misses.
   palettes their classes took. `!fx_evict` counts evictions and residency
   resets, so a caller that found a record resident asks again only after
   the cache has lost a cell (combat keeps the count per blow and form).
+  Record 3 addresses the full base-form vertical Kamehameha: its five-band
+  strip needs one cell for each of the two animation phases. Charging calls
+  the same `fx_warm` path for up/down only, with a per-facing hint in combat's
+  `!cb_warm_beam` and the punch warm-up's late-frame guards. Horizontal
+  polygon beams and Super Saiyan waves do not use these records. This keeps
+  the first upward/downward strip from waiting until after release for its
+  cells, without adding a draw or any visible charge sprites.
   A Super Saiyan kick has a one-frame wind-up and a 0-3 cell upload budget
   in that scene's vblanks, too little for its starburst and five
   shockwave cells: a cross's `FX_HIT` carries `FX_IMP_NEXT`, and once its

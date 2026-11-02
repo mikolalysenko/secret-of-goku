@@ -205,7 +205,7 @@ fx_k_hit:
 	RTS
 
 ; ---------------------------------------------------------------------------
-; fx_warm: A = blow (0 jab, 1 cross, 2 kick) | gold << 8, X = facing (0-3).
+; fx_warm: A = blow (0 jab, 1 cross, 2 kick, 3 full base Kamehameha) | gold << 8, X = facing (0-3).
 ; Readies the cells of a coming contact (fx_warm_list: the impact spark's
 ; first picture, the starburst and, for the kick, the shockwave), so their
 ; uploads land before the contact's busy vblank. All resident (by hint, or
@@ -222,17 +222,20 @@ fx_warm:
 	PHA                           ; $01,S: facing
 	LDA $03,S
 	AND.w #$00FF
-	CMP.w #3
+	CMP.w #4
 	BCC +
 	JMP .none
-+	LDA $03,S                     ; record ((gold * 3 + blow) * 4 + facing) * 16
++	LDA $03,S                     ; impact: ((gold * 3 + blow) * 4 + facing) * 16; beam: (6 * 4 + facing) * 16
 	AND.w #$0100
 	BEQ +
 	LDA.w #3
 +	CLC
 	ADC $03,S
 	AND.w #$00FF
-	ASL
+	CMP.w #3                      ; beam records follow all six impact sets
+	BNE +
+	LDA.w #6
++	ASL
 	ASL
 	ADC $01,S
 	ASL
@@ -355,7 +358,7 @@ fx_k_prep:
 .cells
 	LDA !d_cur+!C_A
 	AND.w #$00FF
-	CMP.w #3
+	CMP.w #4
 	BCS .out
 	STA !d_ks+12
 	LDA !d_cur+!C_KIND
@@ -364,8 +367,11 @@ fx_k_prep:
 	LDA.w #3
 	CLC
 	ADC !d_ks+12
-	STA !d_ks+12
-+	LDA !d_ks+12                  ; ((gold * 3 + blow) * 4 + facing) * 16
+	CMP.w #3                      ; beam records follow all six impact sets
+	BNE +
+	LDA.w #6
++	STA !d_ks+12
++	LDA !d_ks+12                  ; impact: ((gold * 3 + blow) * 4 + facing) * 16; beam: (6 * 4 + facing) * 16
 	ASL
 	ASL
 	STA !d_ks+12

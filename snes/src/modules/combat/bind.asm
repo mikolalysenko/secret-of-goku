@@ -868,6 +868,65 @@ if defined("FX_PREP")
 	REP #$20
 endif
 	RTS
+
+; Charging warms the full base-form vertical strip's two cells (one per
+; animation phase), so a release does not wait for its first upload. Keep a
+; hint per facing, as direction changes do not imply an eviction. Horizontal
+; beams use the polygon; full Super Saiyan waves have their own renderer.
+cb_fx_beam_prep:
+if defined("FX_PREP")
+	LDA !cb_form
+	AND.w #$00FF
+	BEQ .vertical
+	RTS
+.vertical
+	LDA !cb_facing
+	AND.w #$0003
+	CMP.w #1
+	BEQ .out
+	CMP.w #2
+	BEQ .out
+	; A cold record is never started in a frame that is already late.
+	JSL modules_field_current
+	BCS +
+	RTS
++	SEP #$20
+	LDA.l $00213F
+	LDA.l $002137
+	LDA.l $00213D
+	XBA
+	LDA.l $00213D
+	AND.b #$01
+	XBA
+	REP #$20
+	CMP.w #170
+	BCC +
+	CMP.w #225
+	BCS +
+	RTS
++	LDA !cb_facing
+	AND.w #$0003
+	TAX
+	LDA.l !fx_evict
+	INC
+	EOR.l !cb_warm_beam,X
+	AND.w #$00FF
+	BEQ .out                      ; still resident
+	PHX
+	LDA.w #3                      ; full base Kamehameha's warm record
+	JSL fx_warm
+	PLX
+	CMP.w #$FFFF
+	BEQ .out                      ; coming in: ask again next frame
+	INC
+	SEP #$20
+	STA.l !cb_warm_beam,X
+	REP #$20
+.out
+	RTS
+endif
+	RTS
+
 cb_bind_fx_quake:
 if defined("FX_IMPACT")
 	JSL fx_quake
