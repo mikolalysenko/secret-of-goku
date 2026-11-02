@@ -45,7 +45,15 @@ Headless checks use **Mesen2** in `--testRunner` mode (accurate, runs
 unthrottled, Lua API for input, memory, screenshots and savestates). Unpack
 the macOS/Linux release under `.local/tools/mesen/` (or set `MESEN`), launch
 it once, then set `"AllowIoOsAccess": true` in Mesen2's `settings.json`
-(`~/Library/Application Support/Mesen2/` on macOS).
+(`~/Library/Application Support/Mesen2/` on macOS). The macOS build loads
+Homebrew's SDL2 (`brew install sdl2`). On a headless machine, where the
+first-run wizard cannot be answered and `--testRunner` waits on it without
+output, this minimal `settings.json` is enough:
+
+```json
+{"Snes": {"Port1": {"Type": "SnesController"}},
+ "Debug": {"ScriptWindow": {"AllowIoOsAccess": true}}}
+```
 
 ```sh
 node snes/test/mesen.mjs dist/snes/secret-of-goku.sfc my-test.lua .local/snes-test/out

@@ -4,6 +4,55 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES 0.3.0 release review: five regressions fixed (2026-11-02)
+
+A review of everything since `snes-v0.2.0` before cutting 0.3.0, with a
+Mesen replay or a measurement for each fix. None of the regressions was in
+0.2.0.
+
+- Frieza (1ff1d90): his mirrored poses were assembled from unmirrored piece
+  offsets, so he looked scrambled whenever he faced that way. The direct
+  sprite path from f8b02f6 overwrote X, the mirror bit for
+  `core_oam_meta_front`, before falling back, which it did on almost every
+  frame. The path is disconnected; its table strides, room test and x/y
+  store are also wrong and are documented at `fz_spr_front`. A replay of the
+  battle preset shows a whole Frieza where he is mirrored; other frames are
+  byte-identical.
+- Companion AI (eef077a): the `C1:2466` party-setup hijack (c32928e)
+  dropped retail's `AND #$C57B` on its fallback. A party member with a status
+  outside the mask, such as poison, made companion target setup abort. New
+  differential cases fail on the previous build and pass now.
+- Super Saiyan burst (24cb42e): 136 px launches overflow signed 8.8 near
+  an axis, so the transformation burst threw enemies near Goku's axes
+  through him (about -120 px instead of +136). Radial components are
+  clamped to ±$7FFF, and the test now asserts every launch points away.
+- Input (0460a87): the completed-frame pad reuse (10a1c5d) read
+  `!cb_vblanks` through bank $00 (ROM), so it never applied except by
+  accident, and then skipped the auto-joypad wait. Reverted.
+- Instant Transmission (7ae91c5): 719ebb1's unbounded wait for a frame
+  that reached the finish before line 100 left Goku hidden with input
+  masked in crowded boss fights. Twelve teleports per preset held up to 82
+  frames against Mech Rider and up to 110 against Hexas, where 4 of 12
+  never arrived within 110 frames. The finish runs at age 4 again, as in
+  0.2.0. Now all 48 arrive with no hold in the Mana Beast, Mech Rider, Hexas
+  and Thanatos fights.
+
+Reviewed and left for later (minor or latent):
+- `core_dma_lines` covers sizes up to 3040 bytes. A single `$C00` VRAM
+  entry would stall the queue, but no caller is that large (2208 max).
+- The div16/div32 hooks return early in decimal mode before the zero check
+  and always exit X16. Every current caller is binary and X16.
+- c8dbc37 left `AND.b #$08` testing the piece count, so bodies of 8-15
+  pieces take the slower retail loop. The output is still correct.
+- `fx_k_ki` reads `$29` through FX's direct page, not the game's Mode 7
+  flag, so late-frame ki shots in boss arenas show unpredictably (visual
+  only).
+- A queued Instant Transmission survives a map change.
+- Since 719ebb1, companion AI waits without a deadline while Goku charges,
+  fires ki or teleports in a crowded scene.
+- Audio: a one-tick window around the optional bank's DIR switch, and the
+  bed service writing the ports directly during `audio_pause`.
+
 ## SNES Action Grid sprite fix (2026-11-01)
 
 - Unroll the 14 constant-address FX slot clears. This removes all loop and
