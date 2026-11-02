@@ -1168,11 +1168,9 @@ endif
 	LDA.l $D97F31,X
 	ORA $0A00,Y
 	STA $0A00,Y
-	PHA
 	LDA.l $D97F31,X
 	TYX
 	TAY
-	PLA
 	BRA .accepted
 .small
 	LDA.l $D97F2D,X

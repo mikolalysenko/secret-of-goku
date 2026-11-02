@@ -2082,3 +2082,6 @@ The fused multipart emitter also skips two accumulator/flag restorations
 that its caller overwrites anyway. The large-sprite mask needed for final Y
 is retained. Complete assembled differentials match, while the real-input
 results remain Rider 13/240 and Beast 71/240.
+
+The large-sprite path no longer brackets that mask load with PHA/PLA: final A
+is overwritten by the caller, while final Y still comes from the mask.

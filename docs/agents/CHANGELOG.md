@@ -6,6 +6,9 @@ stay traceable even when they are committed together.
 
 ## SNES Action Grid sprite fix (2026-11-01)
 
+- Drop the large multipart emitter's unnecessary PHA/PLA pair while keeping
+  its final-Y mask load. Assembled differentials still match; boss timing is
+  unchanged at Rider 13/240 and Beast 71/240.
 - Remove two flag-only loads from the fused multipart emitter's small-piece
   paths; the caller already overwrites those results. All assembled group
   differentials match and boss timing is unchanged at Rider 13/240 and
