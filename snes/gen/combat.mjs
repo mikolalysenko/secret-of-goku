@@ -25,6 +25,12 @@ export function beamProfile(ssj,charge){
 }
 // Launch arc of updateKnockbacks(): t = age/12 (age 1..12).
 export function launchEase(age){const t=Math.min(1,age/12);return 1-(1-t)**2;}
+// One signed 8.8 radial launch component (v along the axis, d = 256 * the
+// distance), clamped to what cb_scale_ease reads as signed.
+export function radialComponent(launch,v,d){
+  const c=d===0?0:Math.sign(v)*Math.trunc(launch*Math.abs(v)*65536/d);
+  return Math.max(-0x7FFF,Math.min(0x7FFF,c))|0;
+}
 
 // ManaMod's tuning statics (hit stop, push-back), read from the browser's
 // own engine/mana-mod.js: the class is defined, never constructed.
@@ -234,14 +240,16 @@ export async function generate({rom,repo,outDir,xdata}){
   // --- radial launch components (transformBurst): signed 8.8, exact for
   // every integer offset in the 56 px radius. These replace the iterative
   // integer square root and 32-bit division with one table lookup per axis.
+  // A component is clamped to +-$7FFF: launches past 127 px (Super Saiyan's
+  // 136) would otherwise wrap near an axis and cb_scale_ease would read them
+  // as a launch the opposite way, through Goku.
   const radial={x:{base:new Uint8Array(113*113*2),ssj:new Uint8Array(113*113*2)},
     y:{base:new Uint8Array(113*113*2),ssj:new Uint8Array(113*113*2)}};
   for(let y=-56;y<=56;y++)for(let x=-56;x<=56;x++){
     const d2=x*x+y*y,d=Math.floor(Math.sqrt(d2*65536));
     for(const [name,launch] of [['base',FEEL.launch[0]],['ssj',FEEL.launch[1]]]){
       const index=(y+56)*113+x+56;
-      for(const [axis,v] of [['x',d===0?0:Math.sign(x)*Math.trunc(launch*Math.abs(x)*65536/d)],
-        ['y',d===0?0:Math.sign(y)*Math.trunc(launch*Math.abs(y)*65536/d)]]){
+      for(const [axis,v] of [['x',radialComponent(launch,x,d)],['y',radialComponent(launch,y,d)]]){
         radial[axis][name][index*2]=v&255;
         radial[axis][name][index*2+1]=(v>>8)&255;
       }

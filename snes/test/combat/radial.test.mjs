@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {hiromToPc} from '../../tools/w65816.mjs';
 import {FEEL} from '../../gen/snes-feel.mjs';
+import {radialComponent} from '../../gen/combat.mjs';
 import vm from 'node:vm';
 
 const root=resolve(import.meta.dirname,'../../..');
@@ -17,8 +18,9 @@ test('all 12,769 radial table entries match both forms exactly',()=>{
     const base=hiromToPc(address(axis+'_'+name),rom.length);
     for(let y=-56;y<=56;y++)for(let x=-56;x<=56;x++){
       const d2=x*x+y*y,d=Math.floor(Math.sqrt(d2*65536)),v=axis==='X'?x:y;
-      const expected=d===0?0:Math.sign(v)*Math.trunc(launch*Math.abs(v)*65536/d);
-      assert.equal(rom.readInt16LE(base+((y+56)*113+x+56)*2),expected<<16>>16,`x=${x} y=${y} form=${form} axis=${axis}`);
+      const expected=radialComponent(launch,v,d),stored=rom.readInt16LE(base+((y+56)*113+x+56)*2);
+      assert.equal(stored,expected,`x=${x} y=${y} form=${form} axis=${axis}`);
+      assert.equal(Math.sign(stored),Math.sign(v),`launch away from Goku: x=${x} y=${y} form=${form} axis=${axis}`);
     }
   }
 });
@@ -43,7 +45,7 @@ test('the assembled radial routine returns every table result in both forms',()=
       }
       assert.equal(cpu.br[3],0x1FFF,'stack');
       const d2=x*x+y*y,d=Math.floor(Math.sqrt(d2*65536)),v=axis==='X'?x:y;
-      const expected=d===0?0:Math.sign(v)*Math.trunc(launch*Math.abs(v)*65536/d);
+      const expected=radialComponent(launch,v,d);
       assert.equal(cpu.br[0],expected&0xFFFF,`x=${x} y=${y} form=${form} index=${cpu.br[1].toString(16)}`);
     }
   }
