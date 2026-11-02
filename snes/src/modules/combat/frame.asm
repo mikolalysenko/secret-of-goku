@@ -355,18 +355,9 @@ cb_nmi_vblank:
 	PHP
 	REP #$30
 	PHX
-	LDA.l !cb_vblanks
-	DEC
-	CMP.l !core_pad_vblank
-	BNE .wait
-	LDA.l !core_pad
-	BRA .store
-.wait
 -	LDA.l $004212                 ; the auto-joypad read of this vblank (bit 0)
 	LSR
 	BCS -
-	LDA.l $004218
-.store
 	LDA.l $7E0000|!cb_vblanks
 	INC
 	STA.l $7E0000|!cb_vblanks

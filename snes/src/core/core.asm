@@ -134,7 +134,6 @@
 !core_enemy_magic = !SRAM_WORK_ENEMY+$06
 !CORE_ENEMY_MAGIC = $5145
 !core_native_xy = !RAM_CORE_EXT+$1BC ; word: native OBJ anchor; frame thread only
-!core_pad_vblank = !RAM_CORE_EXT+$190 ; word: cb_vblanks when core_read_pad ran
 !core_tp_act = !SRAM_WORK_FLIGHT+$350 ; flight's teleport state (read-only in core)
 !core_tp_age = !core_tp_act+2
 !core_tp_queued = !core_tp_act+$0C
@@ -347,8 +346,6 @@ core_read_pad:
 	STA.w !core_pad_new&$FFFF
 	LDA.w !core_pad&$FFFF : EOR.w !core_pad_prev&$FFFF : AND.w !core_pad_prev&$FFFF
 	STA.w !core_pad_rel&$FFFF
-	LDA.w $D8C4
-	STA.w !core_pad_vblank&$FFFF
 	RTS
 
 ; Work shared by every mode after its modules ran.

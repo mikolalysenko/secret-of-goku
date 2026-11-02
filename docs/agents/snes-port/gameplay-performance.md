@@ -2086,9 +2086,10 @@ results remain Rider 13/240 and Beast 71/240.
 The large-sprite path no longer brackets that mask load with PHA/PLA: final A
 is overwritten by the caller, while final Y still comes from the mask.
 
-Completed field vblanks now reuse the pad core captured at frame start rather
-than waiting for auto-joypad a second time. The capture's vblank serial must
-match, so lag vblanks always retain the original hardware wait and read.
+The completed-frame pad reuse (10a1c5d) was reverted before 0.3.0: its serial
+compare read `!cb_vblanks` through bank $00 (ROM at `$00:D8C4`), so it never
+matched except by accident, and then skipped the auto-joypad wait. Every field
+vblank again waits for auto-joypad and reads `$4218`.
 
 The 14 FX slot clears now use constant addresses instead of a decrementing
 loop. The exact bytes and final 16-bit index are preserved, with no change
