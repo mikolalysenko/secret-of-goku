@@ -26,6 +26,31 @@ if not(defined("AUDIO_PCM"))
 endif
 	RTL
 
+; Field and world vblank (last in modules_field_nmi / modules_world_nmi):
+; release the echo of the frame's last asynchronous command. Until the CPU
+; changes port 0 the SPC waits in its echo loop ($0CC3) and its timer ticks
+; go unprocessed (the driver runs one per pass, however many elapsed); the
+; frame's own audio poll would come a frame later. These callbacks run only
+; in a vblank whose frame completed (core_field_nmi, core_world_nmi): the
+; main thread is in the game's wait for this NMI, outside every handshake.
+; !au_pending is set only after the SPC's port 0 read 0, so a match is its
+; echo. M16/X16 in and out, DB = $80.
+if !AUDIO_ECHO_NMI
+audio_nmi:
+	LDA.l $7E0000|!au_pending
+	AND.w #$00FF
+	BEQ .done
+	SEP #$20
+	CMP.w $2140
+	BNE +
+	STZ.w $2140
+	LDA.b #0
+	STA.l $7E0000|!au_pending
++	REP #$20
+.done
+	RTL
+endif
+
 ; C3:0175, inside the native driver's saved-register prologue. D=$1E00,
 ; DB=0, X/Y16. Only command 02 is asynchronous: all its samples/sequences
 ; are resident. The SPC echoes 02 after latching all four ports, then waits

@@ -31,6 +31,14 @@ endif
 if !AUDIO_CUSTOM_SAMPLES
 assert not(defined("AUDIO_PCM")), "AUDIO_CUSTOM_SAMPLES and AUDIO_PCM are separate audition builds"
 endif
+; audio_nmi (native.asm) releases an echoed command in the field and world
+; vblank. -DAUDIO_ECHO_PARK=1 leaves it parked until the next frame's audio
+; poll, as before (that build is byte-identical to the base's).
+if defined("AUDIO_PCM") || defined("AUDIO_ECHO_PARK")
+!AUDIO_ECHO_NMI = 0
+else
+!AUDIO_ECHO_NMI = 1
+endif
 
 ; ---------------------------------------------------------------- WRAM
 !aw #= !RAM_AUDIO&$FFFF          ; absolute with DB = $7E
