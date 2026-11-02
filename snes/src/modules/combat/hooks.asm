@@ -1,6 +1,12 @@
 ; Every patch of original code made by combat, with the original bytes
 ; asserted (native.asm has the handlers; bind.asm the movement hooks).
 
+if not(defined("COMBAT_NATIVE_ADD_SLOW"))
+%orig4($C22A17, $B118C5A4)
+%orig1($C22A1B, $76)
+%hijack($C22A17, cb_native_add_words, 5, combat)
+endif
+
 ; Field vblank counter and per-vblank pad (the browser's 60 Hz combat clock
 ; and input in lagging scenes).
 %orig4($C0C164, $EC14FFA9)           ; LDA #$FF / TRB $EC

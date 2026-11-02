@@ -1046,6 +1046,111 @@ combat_recoil_commit:
 	PLA
 	PLP
 	RTL
+; C2:2A17 adds two word arrays. Its hot callers use six-byte and 96-byte
+; counts; fully unroll those loops and retain the retail general path.
+macro cb_native_add_word()
+	CLC
+	LDA ($76),Y
+	ADC ($79),Y
+	STA ($76),Y
+	INY : INY
+endmacro
+
+cb_native_add_words:
+	LDY $C5
+	LDA $66
+	CMP.w #6
+	BEQ .six
+	CMP.w #96
+	BEQ .ninety_six
+.general
+	%cb_native_add_word()
+	CPY $66
+	BNE .general
+	JML $C22A26
+.six
+	for i = 0..3
+		%cb_native_add_word()
+	endfor
+	CPY $66
+	JML $C22A26
+.ninety_six
+	for i = 0..48
+		%cb_native_add_word()
+	endfor
+	CPY $66
+	JML $C22A26
+
+; C1:5DE8 expands to sixteen zeroed 16-byte rows. Write the same sparse
+; output directly, including the retail final source/destination and history.
+cb_native_lz_zero:
+	LDA $78
+	AND.w #$00FF
+	CMP.w #$00C1
+	BEQ +
+	JMP .native
++
+	LDA $72
+	CMP.w #16
+	BEQ +
+	JMP .native
++
+	LDA $74
+	CMP.w #256
+	BEQ +
+	JMP .native
++
+	SEP #$30
+	LDA.b #$00
+	LDX.b #$00
+.row
+	LDA.b #$00
+	LDY.b #$00
+	for i = 0..16
+		STA [$7C],Y
+		INY
+	endfor
+	INX
+	CPX.b #16
+	BEQ .copied
+	LDA $7C
+	CLC
+	ADC.b #$40
+	STA $7C
+	LDA $7D
+	ADC.b #$00
+	STA $7D
+	BRA .row
+.copied
+	LDA.b #$09
+	STA $76
+	LDA.b #$5E
+	STA $77
+	LDA.b #$C1
+	STA $78
+	STZ $74
+	STZ $75
+	STZ $95
+	STZ $96
+	STZ $97
+	LDA.b #$01
+	STA $98
+	LDX.b #0
+	LDY.b #15
+	CLC
+	REP #$20
+	PLA
+	AND.w #$FF00
+	SEP #$20
+	LDA.b #$00
+	REP #$20
+	JML $C21DB2
+.native
+	PLA
+	STZ $95
+	SEP #$30
+	JML $C21D7E
+
 ; Goku ($10 = 0) recoils from an ordinary hit on this map. C set. M16.
 cb_recoil_ok:
 	LDA.l $7E0010

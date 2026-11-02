@@ -2063,3 +2063,12 @@ assembled differential covers complete groups, all live RAM, registers and
 flags in both attribute modes, including clipping, high bits and decimal
 fallbacks. Three consecutive bsnes scripts improve Rider 66 -> 59 and Beast
 227 -> 226 missed field updates out of 720.
+
+Profiling the measured Beast window with a local instrumented bsnes core
+identified C2:2A17's word-array addition and the C1:5DE8 graphics stream.
+The 96-byte addition is now unrolled (19,692 -> 15,996 cycles over the
+differential corpus), with all other sizes on the same general loop. C1:5DE8
+expands to sixteen zeroed 16-byte rows; its exact sparse writer preserves
+all row gaps, pointers, history, registers and flags, and costs 15,667 ->
+2,655 cycles. The current single bsnes runs are Rider 13/240 and Beast
+85/240 missed field updates.

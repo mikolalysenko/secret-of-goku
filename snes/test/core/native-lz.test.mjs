@@ -58,3 +58,12 @@ test('predecoded Beast graphics preserve the entire decoder contract',t=>{
   compare({count:64});
   t.diagnostic(`72-byte decode: ${oldCycles} -> ${newCycles} CPU cycles`);
 });
+
+test('zero Beast graphics preserve the sparse rows and complete decoder state',t=>{
+  for(const dest of [0x8000,0xBC00,0xFA00])for(const p of [0,1,4,8,0x40,0x80,0xCF])
+    compare({dest,p,source:0x5DE8,count:256,row:16});
+  const [oldCycles,newCycles]=compare({source:0x5DE8,count:256,row:16});
+  assert(newCycles<oldCycles*.35,`zero decode cycles ${oldCycles} -> ${newCycles}`);
+  compare({source:0x5DE8,count:64,row:16});
+  t.diagnostic(`256-byte zero decode: ${oldCycles} -> ${newCycles} CPU cycles`);
+});

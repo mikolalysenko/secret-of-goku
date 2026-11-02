@@ -1220,6 +1220,10 @@ core_special_group_native:
 core_native_lz_beast:
 	PHA
 	LDA $76
+	CMP.w #$5DE8
+	BNE +
+	JML cb_native_lz_zero
++
 	CMP.w #$5D22
 	BNE .native
 	LDA $78
