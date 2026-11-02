@@ -2085,3 +2085,7 @@ results remain Rider 13/240 and Beast 71/240.
 
 The large-sprite path no longer brackets that mask load with PHA/PLA: final A
 is overwritten by the caller, while final Y still comes from the mask.
+
+Completed field vblanks now reuse the pad core captured at frame start rather
+than waiting for auto-joypad a second time. The capture's vblank serial must
+match, so lag vblanks always retain the original hardware wait and read.

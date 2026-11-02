@@ -6,6 +6,9 @@ stay traceable even when they are committed together.
 
 ## SNES Action Grid sprite fix (2026-11-01)
 
+- Reuse core's captured pad on completed field vblanks instead of waiting
+  for auto-joypad again. A vblank serial check keeps the hardware wait and
+  read on every lag vblank. Combat and boss input results are unchanged.
 - Drop the large multipart emitter's unnecessary PHA/PLA pair while keeping
   its final-Y mask load. Assembled differentials still match; boss timing is
   unchanged at Rider 13/240 and Beast 71/240.
