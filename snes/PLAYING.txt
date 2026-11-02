@@ -6,7 +6,13 @@ This is the standalone SNES cartridge port of Secret of Goku. Play with
 Goku's punches, ki blasts, Kamehameha, local flight, Instant Transmission
 and Super Saiyan transformation inside Secret of Mana's action RPG.
 
-Version {{VERSION}} fixes the black screen that followed the Mana Beast in
+Version {{VERSION}} is a bug-fix update to 0.3.0. In areas with few
+enemies, Instant Transmission could stop responding after one or two uses
+until the next map; it now cycles through every reachable enemy again. An
+upward or downward Kamehameha now appears in full the moment it fires,
+instead of showing only the glow in Goku's hands for its first frames.
+
+Version 0.3.0 fixed the black screen that followed the Mana Beast in
 the good ending, and three boss arenas that could load empty and trap the
 party: Tropicallo's, Fire Gigas's in the Earth Palace and Spikey Tiger's.
 Focus breaks petrification again while companions are present. Blows land
