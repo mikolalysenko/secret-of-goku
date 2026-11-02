@@ -4,7 +4,7 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
-## SNES 0.3.0 release review: five regressions fixed (2026-11-02)
+## SNES 0.3.0 release review: six regressions fixed (2026-11-02)
 
 A review of everything since `snes-v0.2.0` before cutting 0.3.0, with a
 Mesen replay or a measurement for each fix. None of the regressions was in
@@ -36,6 +36,28 @@ Mesen replay or a measurement for each fix. None of the regressions was in
   never arrived within 110 frames. The finish runs at age 4 again, as in
   0.2.0. Now all 48 arrive with no hold in the Mana Beast, Mech Rider, Hexas
   and Thanatos fights.
+- Orbit HUD (this review): 9b1efe7 skipped the damage reaction's vblank
+  wait (`C1:E0F9`) in the live orbit fight, but `C1:E2E5` and `C1:E339`
+  after it write the BG3 HUD through `$2118` directly. A write probe saw the
+  HP digits written on lines 39-51 of the fight and the clash, which
+  hardware ignores; 0.2.0 had none. The bypass is removed and the probe is
+  clean. Each fight start phase keeps the reactions' two repeated pictures,
+  as `glyph` now allows; its cache checks are unchanged.
+
+Test fixes found by the full Mesen run (no ROM change):
+- CORE_TEST builds no longer fit the core bank (95 bytes free), so the core
+  module and title's door round trip could not run. The test client now
+  assembles in the debug bank's free tail; release builds are identical.
+- Frieza `beast` counted eruptions over 1000 video frames. Since 1f2072c
+  the fight lags less and a third eruption, at the same challenge tick as
+  before (~415), fell inside the window. The clock is held after the second
+  hit; logged ticks match on both sides of 1f2072c.
+
+Pre-existing and unchanged at de0273a: full-party Mech Rider still has
+16/240 missed updates and 42 long NMIs in `gameplay` (no PPU write outside
+vblank). The hidden-Frieza flyby reference build (`FRIEZA_FLYBY_HIDE`, test
+only) shows one late retail NMI per run after the input revert's layout
+shift; the release ROM's own flyby has none.
 
 Reviewed and left for later (minor or latent):
 - `core_dma_lines` covers sizes up to 3040 bytes. A single `$C00` VRAM

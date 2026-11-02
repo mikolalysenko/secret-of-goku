@@ -1704,35 +1704,6 @@ core_native_dma_window:
 	CLC
 	RTS
 
-; C1:E0F9's mid-frame upload wait is redundant while the orbit fight owns
-; the picture: its frame hides every native actor and holds native cell DMA.
-; Bypass only that live, unpaused scene, with no pending command or return.
-; The ordinary path retains the original store and BIT/BNE wait. M8 in/out, A=2.
-core_orbit_native_wait:
-	SEP #$20
-	LDA.l !RAM_ORBIT
-	CMP.b #$02                       ; OS_LIVE
-	BNE .native
-	LDA.l !RAM_ORBIT+$27             ; no return in progress
-	BNE .native
-	LDA.l !RAM_ORBIT+$01             ; no pending scene command
-	BNE .native
-	LDA.l !core_orbit_fight_on
-	BEQ .native
-	LDA $D0                          ; native dialogue/event owns the field
-	BNE .native
-	LDA $EC
-	AND.b #$FE                       ; ring/menu or another native upload
-	BNE .native
-	LDA.b #$02
-	JML $81E103                     ; original RTS, restoring the caller's bank
-.native
-	LDA.b #$02
-	STA.b $EC
--	BIT.b $EC
-	BNE -
-	JML $81E103
-
 ; C1:C599: common death and weapon sheets. All three retail
 ; colour encodings were expanded at build time. Copy into the original
 ; buffer with an early-field DMA or interruptible word copy, preserving the

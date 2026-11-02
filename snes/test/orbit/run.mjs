@@ -555,7 +555,9 @@ const cases={
     return ok;
   },
   async glyph(rom){
-    return fightCase(rom,'glyph',660,fightPads(660),[0,60,150,200,240,320,600],0,{jumps:12,prot:8,burst:40,hides:[0,0,1],short:0});
+    // two repeats: each damage reaction keeps the retail vblank waits before
+    // its direct HUD writes (C1:E2E5, C1:E339), one picture each (248, 524)
+    return fightCase(rom,'glyph',660,fightPads(660),[0,60,150,200,240,320,600],2,{jumps:12,prot:8,burst:40,hides:[0,0,1],short:0});
   },
   async ['glyph-fallback'](rom){
     return fightCase(rom,'glyph-fallback',660,fightPads(660),[0,60,150,200,240,320,600],12,{jumps:12,prot:8,burst:40,hides:[0,0,1],short:0});

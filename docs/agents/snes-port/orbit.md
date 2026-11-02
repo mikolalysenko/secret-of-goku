@@ -529,13 +529,16 @@ scenery, clash and return retain their state and OAM behavior.
 The black band load also warms slot 0's source-variant-0 native death sheet in
 `7E:2800`. `core_native_tiles` compares the actual expanded source, so colour
 variants 0/3/6/... correctly share that cache; other sheets and slots invalidate
-it. During the live, unpaused orbit fight only, `core_orbit_native_wait` skips
-the native mid-frame upload wait because the scene already hides native actors
-and holds their cell DMA. Menus, dialogue, pending commands, returns and all
-ordinary scenes retain the wait. `glyph` proves both reactions hit the cache
-with all 1,600 bytes exact; `glyph-fallback` forces full copies and checks the
-same bytes. Every start phase now has zero repeated pictures and zero state
-mismatches. The corrected timeline reaches one crowded burst age: intentional
+it. `glyph` proves both reactions hit the cache with all 1,600 bytes exact;
+`glyph-fallback` forces full copies and checks the same bytes.
+
+The damage reaction's vblank waits (`C1:E0F9`) stay retail. A bypass during
+the live fight (`core_orbit_native_wait`, 9b1efe7) removed the reactions' two
+repeated pictures, but `C1:E2E5` and `C1:E339` after those waits write the
+BG3 HUD through `$2118` directly, and the fight shows that HUD below line 196:
+the HP digits were written on lines 39-51, which hardware ignores. It was
+removed for 0.3.0; every start phase keeps two repeats (248 and 524) and zero
+state mismatches. The corrected timeline reaches one crowded burst age: intentional
 burst-only PPU overflow is 162 sliver-lines rather than 153, with no OAM entries
 removed and no Goku/Frieza/beam/body sliver loss.
 
