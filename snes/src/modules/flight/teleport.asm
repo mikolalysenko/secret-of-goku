@@ -423,7 +423,12 @@ fl_tp_pick:
 	JSR fl_tp_landing
 	BCS .found_next
 .miss
+	; fl_tp_bit takes the slot in X. fl_tp_entity/fl_tp_landing leave X
+	; elsewhere (an empty slot's X is its actor offset), and a zero bit kept
+	; the tried mask empty: the next frame restarted at the same empty slot
+	; and the press never fired (few foes, empty slots after the last one).
 	LDA.l !fl_tp_best_i
+	TAX
 	JSR fl_tp_bit
 	ORA.l !fl_tp_tried
 	STA.l !fl_tp_tried

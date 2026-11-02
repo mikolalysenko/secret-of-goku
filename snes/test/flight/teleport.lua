@@ -86,12 +86,55 @@ local function offscreen()
   end
   F.check(tp == 1 and tin == 1, 'one teleport and one teleportIn cue (' .. tp .. ', ' .. tin .. ')')
 end
+-- 3. cycling with a gap (early areas: few foes, empty slots after them).
+--    Only slots 3 and 4 hold Rabites. Three presses visit the nearest, the
+--    other one, then wrap to the first, as mana-mod.js instantTransmission
+--    orders reachable foes by slot. The search past the last target walks
+--    the empty slots 5-12 one per frame and must not stall on them.
+local function cycle()
+  local function clearRest() for i = 5, 11 do H.w8(0x7EE000 + i * 0x200, 0) end end
+  clearRest()
+  H.w16(0x7EE002, 312); H.w16(0x7EE004, 248); H.w8(0x7EE00B, 1)
+  H.w16(0x7EE602, 352); H.w16(0x7EE604, 248); H.w8(0x7EE60B, 2)
+  H.w16(0x7EE802, 408); H.w16(0x7EE804, 248); H.w8(0x7EE80B, 2)
+  F.restore()
+  H.wait(2)
+  local seq, starts = {}, 0
+  for n = 1, 3 do
+    local started = false
+    -- the field respawns foes as the camera moves: keep 5-11 empty
+    clearRest()
+    H.hold('l b', 1)
+    clearRest()
+    H.hold('l b', 1)
+    for i = 1, 120 do
+      clearRest()
+      if H.r16(F.TP) ~= 0 then started = true end
+      if H.r16(F.TP) == 0 and H.r16(F.TP + 0x0C) == 0 then break end
+      H.wait(1)
+    end
+    if started then starts = starts + 1 end
+    local s = F.status()
+    seq[n] = s.tg
+    H.log(string.format('cycle press %d: started %s target %d queued %d tried %04x at %d,%d',
+      n, tostring(started), s.tg, H.r16(F.TP + 0x0C), H.r16(F.TP + 0x16), s.x, s.y))
+    H.wait(6)
+  end
+  F.check(starts == 3, 'cycle: all three presses started a teleport (' .. starts .. ')')
+  F.check(seq[1] == 3 or seq[1] == 4, 'cycle: first press took slot 3 or 4 (got ' .. seq[1] .. ')')
+  F.check(seq[2] ~= seq[1] and (seq[2] == 3 or seq[2] == 4), 'cycle: second press took the other foe (got ' .. seq[2] .. ')')
+  F.check(seq[3] == seq[1], 'cycle: third press wrapped to slot ' .. seq[1] .. ' (got ' .. seq[3] .. ')')
+  F.check(H.r16(F.TP + 0x0C) == 0, 'cycle: no search left pending')
+end
 function test()
   F.import('animation-audit__native__rabite-field-b')
   F.on()
   H.wait(1)
   H.save('teleport-start')
   riverbank()
+  H.load(H_OUT .. '/teleport-start.mss')
+  H.wait(1)
+  cycle()
   H.load(H_OUT .. '/teleport-start.mss')
   H.wait(1)
   offscreen()

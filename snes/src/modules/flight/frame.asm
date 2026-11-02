@@ -520,6 +520,8 @@ flight_frame:
 	JSR fl_crossing_none
 	LDA.w #$0000
 	STA.l !fl_tp_act
+	STA.l !fl_tp_queued          ; a pending or queued press ends with the map
+	STA.l !fl_tp_tried
 	LDA.w #$FFFF
 	STA.l !fl_tp_last
 +	JSR fl_read_pad

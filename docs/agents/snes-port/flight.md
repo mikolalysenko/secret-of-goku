@@ -686,7 +686,11 @@ earlier one.
   reach; an offscreen target (screen x −101) is reached with the camera
   streaming in 15 px steps (17 frames, all of them absent at age 4), Goku
   lands on screen, walks afterwards, the ring opens, `teleport` sounds at
-  the press and `teleportIn` once at age 6.
+  the press and `teleportIn` once at age 6. Cycling: with Rabites only in
+  slots 3 and 4 (5-11 kept empty every frame), three presses visit 3, 4
+  and wrap back to 3, and no search is left pending. The search past the
+  last target walks the empty slots one per frame; before the `.miss` fix
+  it stalled on the first empty one.
 - `whip`: `whip-flight.spec.mjs` and `ki-world.spec.mjs` in the Earth Palace
   (map 313): flying across both pads, there and back, never starts the pad
   event, lands within 14 px on landable ground with the companions close;

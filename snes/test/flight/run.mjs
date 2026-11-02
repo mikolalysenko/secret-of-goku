@@ -7,8 +7,9 @@
 //   water     Water Palace gap: fly over, hover on release, cross, return
 //   passengers CPU companions ride flight and resume on landing; human
 //             ownership releases the actor immediately, status timers run
-//   teleport  teleport.spec.mjs: riverbank landing, offscreen target with the
-//             camera follow, cues, walking and the ring afterwards
+//   teleport  teleport.spec.mjs: riverbank landing, cycling past empty slots
+//             (3, 4, then wrap to 3), offscreen target with the camera
+//             follow, cues, walking and the ring afterwards
 //   whip      whip-flight.spec.mjs / ki-world.spec.mjs whip pads (Earth Palace)
 //   ceiling   indoor-flight.spec.mjs roof exits from seven rooms
 //   flowers   Potos: flying over a flower bed into the tree beside it never

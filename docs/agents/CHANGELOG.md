@@ -4,6 +4,29 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES Instant Transmission cycling fix (2026-11-02)
+
+Reported after 0.3.0: in early areas Instant Transmission worked once or
+twice and then stopped responding until the next map.
+
+- Cause: 719ebb1 made the search after the last target try one slot per
+  frame. Its `.miss` path called `fl_tp_bit` without loading the slot into
+  X, so the bit came from whatever X held. For an empty slot X is the actor
+  offset (slot × $200), and slots 5-12 then read `$0000` from the flight
+  bank. The tried mask stayed empty, so every frame restarted at the same
+  empty slot. With few foes, as in early areas, the slot after the last
+  target is usually empty: the press stayed pending forever and later
+  presses were ignored. If a foe later spawned in that slot, Goku
+  teleported to it unprompted. 0.2.0 searched all slots at once and was
+  not affected.
+- Fix: `.miss` loads the slot into X. A map change now also clears the
+  queued press and the search state, which resolves "a queued Instant
+  Transmission survives a map change" from the 0.3.0 review.
+- Test: `flight teleport` gains a cycling case. With Rabites only in slots
+  3 and 4, three presses must go 3, 4, then back to 3. On the 0.3.0 code the
+  third press never starts and the search stays pending; with the fix it
+  passes.
+
 ## SNES release: 0.3.0 (2026-11-02)
 
 - Published as a GitHub release:
@@ -109,7 +132,8 @@ Reviewed and left for later (minor or latent):
 - `fx_k_ki` reads `$29` through FX's direct page, not the game's Mode 7
   flag, so late-frame ki shots in boss arenas show unpredictably (visual
   only).
-- A queued Instant Transmission survives a map change.
+- A queued Instant Transmission survives a map change. (Fixed after the
+  release with the cycling fix above.)
 - Since 719ebb1, companion AI waits without a deadline while Goku charges,
   fires ki or teleports in a crowded scene.
 - Audio: a one-tick window around the optional bank's DIR switch, and the
